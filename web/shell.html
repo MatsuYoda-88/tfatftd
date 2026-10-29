@@ -1459,8 +1459,11 @@ var Module = {
         help.textContent = disc && disc.error ? disc.error.message : 'Load your Tokyo Drift ISO in Game data to play. It stays on your device.';
         help.hidden = false;
         document.getElementById('start').textContent = 'Load your disc first';
-        const tab = document.querySelector('[data-tab="data"]');
+        // after a reload the player chose (HD folder, a setting), stay on their tab and say why Play is off
+        const back = window.tdBackTab;
+        const tab = document.querySelector('[data-tab="' + (back || 'data') + '"]');
         if (tab) tab.click();
+        if (back && back !== 'data') help.textContent = 'Saved! Now load your Tokyo Drift ISO in the Game data tab to play. (This site keeps its own copy of the disc, so it needs loading once here.)';
         statusEl.textContent = 'No disc loaded, ' + gpu;
         return;
       }
@@ -1645,6 +1648,7 @@ const TDSaves = (() => {
 // ===== Launcher wiring =====
 (() => {
   const $ = (id) => document.getElementById(id);
+  window.addEventListener('beforeunload', () => { try { const t = document.querySelector('#launcher [aria-selected=true]'); if (t) sessionStorage.setItem('td_tab', t.dataset.tab); } catch (e) {} });
   for (const tab of document.querySelectorAll('#launcher [data-tab]')) {
     tab.addEventListener('click', () => {
       for (const other of document.querySelectorAll('#launcher [data-tab]')) {
@@ -1653,6 +1657,9 @@ const TDSaves = (() => {
       }
     });
   }
+  // put the player back on the tab they were on before a reload
+  try { window.tdBackTab = sessionStorage.getItem('td_tab'); sessionStorage.removeItem('td_tab'); } catch (e) {}
+  if (window.tdBackTab) { const t = document.querySelector('#launcher [data-tab="' + window.tdBackTab + '"]'); if (t) t.click(); }
   const reloadOn = new Set(['disc', 'scale', 'hd', 'shake', 'sky']);
   for (const key of Object.keys(DEFAULTS)) {
     const el = $('set-' + key);
