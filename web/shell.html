@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>tfatftd.xyz</title>
+<title>tfatftd</title>
 <script src="coi-serviceworker.js"></script>
 <style>
   :root { color-scheme: dark; }
@@ -184,7 +184,7 @@
 </div>
 <button id="exit-fullscreen" type="button">Exit fullscreen</button>
 <div id="overlay"><div id="launcher">
-  <div class="brand"><h1>tfatftd.xyz</h1><div class="sub">The Fast and the Furious: Tokyo Drift &middot; PS2 recompiled &middot; WebGPU</div>
+  <div class="brand"><h1>tfatftd</h1><div class="sub">The Fast and the Furious: Tokyo Drift &middot; PS2 recompiled &middot; WebGPU</div>
     <div class="notice">Fan project. Not affiliated with or endorsed by Universal, Bandai Namco or Eutechnyx. Bring your own disc.</div></div>
   <button id="start" disabled>Loading…</button>
   <p id="help" hidden></p>
@@ -1207,7 +1207,7 @@ const countShown = () => {
 };
 requestAnimationFrame(countShown);
 
-// ===== tfatftd.xyz: works on the public site (player's own disc in browser storage) and on the laptop game server =====
+// ===== tfatftd: works on the public site (player's own disc in browser storage) and on the laptop game server =====
 const HD_PACK_URL = '';   // set to the download link of the HD texture pack zip
 const TD = (() => {
   const ORIGINAL_SIZE = 2315419648, EXPECTED_BOOT = 'SLUS_214.49';
@@ -1247,7 +1247,7 @@ const TD = (() => {
   const fileReader = (file) => async (offset, size) => new Uint8Array(await file.slice(offset, offset + size).arrayBuffer());
   async function store(slot, file, progress) {
     const info = await isoInfo(fileReader(file));
-    if (info.boot !== EXPECTED_BOOT) throw new Error('That disc boots ' + (info.boot || 'nothing') + '. tfatftd.xyz needs the USA Tokyo Drift disc (' + EXPECTED_BOOT + ').');
+    if (info.boot !== EXPECTED_BOOT) throw new Error('That disc boots ' + (info.boot || 'nothing') + '. tfatftd needs the USA Tokyo Drift disc (' + EXPECTED_BOOT + ').');
     try { await navigator.storage.persist(); } catch (e) {}
     const est = await navigator.storage.estimate().catch(() => null);
     if (est && est.quota && est.quota - est.usage < file.size + 64e6) throw new Error('Not enough browser storage: the disc needs ' + gb(file.size) + ', only ' + gb(est.quota - est.usage) + ' free.');
