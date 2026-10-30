@@ -208,10 +208,12 @@
       <select id="set-bloom"><option value="1">On (original)</option><option value="0">Off</option></select></div>
     <div class="row"><div><b>Camera shake</b><small>Off = no bumps, jolts, gear-change or nitrous shake, and no crash shake. Speed and G-force camera lean stay. Restarts the game.</small></div>
       <select id="set-shake"><option value="0">Off</option><option value="1">On (original)</option></select></div>
+    <div class="row"><div><b>Camera motion</b><small>Locked takes out ALL camera movement: the sway in corners, the lean and g-force push when you hit the gas or brakes, the wobble at speed, gear-change and nitrous kicks. The camera sits still behind the car. (Original disc only.)</small></div>
+      <select id="set-cam"><option value="1">On (original)</option><option value="0">Locked (no sway or g-force)</option></select></div>
     <div class="row"><div><b>Sky</b><small>Remastered: smooth HD night skies with orange city glow (no green smog, no banding). Needs HD textures on.</small></div>
       <select id="set-sky"><option value="1">Remastered</option><option value="0">Original pack</option></select></div>
     <div class="row public-only" hidden><div><b>HD texture pack</b><small id="hdpack-note">Download the pack, unzip it, then point the game at the folder. Desktop Chrome or Edge.</small></div>
-      <div class="btns"><a id="hdpack-link" class="btnlink" href="#" target="_blank" rel="noopener">Download HD pack</a><button id="hdpack-pick">Choose folder</button></div></div>
+      <div class="btns"><a id="hdpack-link" class="btnlink" href="#" target="_blank" rel="noopener">Download HD pack</a><button id="hdpack-pick">Choose folder</button><button id="hdpack-forget" title="Forget the saved HD folder">Forget</button></div></div>
     <div class="row"><div><b>HD textures</b><small id="hd-note">Your PCSX2 upscaled texture pack (PCSX2\textures\SLUS-21449\replacements), matched exactly like PCSX2 does.</small></div>
       <select id="set-hd"><option value="1">On</option><option value="0">Off</option></select></div>
     <div class="row"><div><b>Touch controls</b><small>The on-screen pad on phones and tablets. Auto hides it while a controller is connected.</small></div>
@@ -229,6 +231,8 @@
       <div class="btns"><button id="backup-now">Back up now</button><button id="backup-restore">Restore</button></div></div>
     <div class="row"><div><b>Backup file</b><small>An encrypted .tdsave of the memory card you can keep anywhere. Only your key opens it.</small></div>
       <div class="btns"><button id="file-download">Download backup</button><button id="file-restore">Restore from file</button></div></div>
+    <div class="row"><div><b>Saves folder</b><small id="saves-folder-note">Pick a folder on your PC (like Tokyo Drift\ISOs\PCSX2 Saves). Every save is copied there as Mcd001.ps2, and the game loads it from there, so clearing browser data can't lose your career.</small></div>
+      <div class="btns"><button id="saves-folder-pick" class="hot">Choose folder</button></div></div>
     <div class="row"><div><b>Memory card (unencrypted)</b><small>Plain .ps2 card in PCSX2's layout.</small></div>
       <div class="btns"><button id="launch-export-card">Export .ps2</button><button id="launch-import-card">Import .ps2</button></div></div>
     <input id="key-file" type="file" accept=".tdkey,application/json" hidden><input id="save-file" type="file" accept=".tdsave" hidden>
@@ -287,12 +291,25 @@ function note(text) {
   }, 5000);
 }
 let cardTimer = 0;
+// copy the card to the player's saves folder (Saves tab), so clearing browser data can't take the career with it
+async function mirrorCard() {
+  try {
+    if (typeof TD === 'undefined' || typeof showDirectoryPicker !== 'function') return;
+    const dir = await TD.savesFolder(false);
+    if (!dir || dir.needsPermission) return;
+    const data = FS.readFile(CARD_FILE);
+    const out = await (await dir.getFileHandle('Mcd001.ps2', { create: true })).createWritable();
+    await out.write(data); await out.close();
+    note('Saved to your saves folder (' + dir.name + ')');
+  } catch (e) { console.warn('memory card: saves folder copy failed', e); }
+}
 function storeCard(then) {
   clearTimeout(cardTimer);
   cardTimer = setTimeout(() => {
     try {
       FS.syncfs(false, (err) => {
         if (err) console.warn('memory card: could not write browser storage', err);
+        mirrorCard();
         if (then) then();
       });
     } catch (e) {
@@ -341,7 +358,7 @@ const params = new URLSearchParams(location.search);
 // ===== TokyoDriftWeb settings (saved in this browser, applied when you press Play) =====
 const SETTINGS_KEY = 'tdweb-settings';
 const PHONE = matchMedia('(pointer: coarse)').matches;
-const DEFAULTS = { disc: 'original', aspect: 'auto', scale: PHONE ? '1' : '2', fullscreen: PHONE ? '1' : '0', aa: '0', stats: '1', hd: PHONE ? '0' : '1', shake: '0', haze: '0', blur: '1', bloom: '1', sky: '1', hud: '1', menus43: '1', touch: 'auto' };
+const DEFAULTS = { disc: 'original', aspect: 'auto', scale: PHONE ? '1' : '2', fullscreen: PHONE ? '1' : '0', aa: '0', stats: '1', hd: PHONE ? '0' : '1', shake: '0', haze: '0', blur: '1', bloom: '1', sky: '1', hud: '1', menus43: '1', touch: 'auto', cam: '1' };
 let settings = { ...DEFAULTS };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) {}
 function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {} }
@@ -370,7 +387,7 @@ function aspectArgs(name) {
 // plus the crash-impact shake switch in CameraShake::Apply (word at 0x3988FC).
 document.cookie = 'td_shake=' + (settings.shake === '1' ? '1' : '0') + '; path=/; SameSite=Strict';
 document.cookie = 'td_sky=' + (settings.sky === '0' ? '0' : '1') + '; path=/; SameSite=Strict';
-const shakeArgs = () => (settings.shake === '1' ? [] : ['--patch', '1:3988fc:4:1']);
+const shakeArgs = () => (settings.shake === '1' && settings.cam !== '0' ? [] : ['--patch', '1:3988fc:4:1']);
 document.body.classList.toggle('wide', aspect !== '4:3');
 const statsEl = document.getElementById('stats');
 const statsToggle = document.getElementById('stats-toggle');
@@ -1215,11 +1232,45 @@ const TD = (() => {
   const ascii = (b) => String.fromCharCode(...b);
   const server = fetch('server.json', { cache: 'no-store' }).then((r) => r.ok ? r.json() : null).catch(() => null);
   async function root() { return navigator.storage.getDirectory(); }
+  // the disc is read straight from the player's drive (a saved file handle), so clearing site data or a full
+  // drive can't throw it away; the old 2 GB browser copy is still used if there is one (phones, older saves)
+  const needsAllow = {};
   async function stored(slot) {
+    try {
+      const h = await idbGet('iso-' + slot);
+      if (h) {
+        if (await h.queryPermission({ mode: 'read' }) === 'granted') return await h.getFile();
+        needsAllow[slot] = h;
+      }
+    } catch (e) {}
     try { return await (await (await root()).getFileHandle(slot + '.iso')).getFile(); } catch (e) { return null; }
   }
+  async function linked(slot) { try { return await idbGet('iso-' + slot); } catch (e) { return null; } }
   async function remove(slot) {
     try { await (await root()).removeEntry(slot + '.iso'); } catch (e) {}
+    try { await idbDel('iso-' + slot); } catch (e) {}
+  }
+  async function link(slot, handle) {
+    const file = await handle.getFile();
+    const info = await isoInfo(fileReader(file));
+    if (info.boot !== EXPECTED_BOOT) throw new Error('That disc boots ' + (info.boot || 'nothing') + '. tfatftd.xyz needs the USA Tokyo Drift disc (' + EXPECTED_BOOT + ').');
+    try { await (await root()).removeEntry(slot + '.iso'); } catch (e) {}
+    await idbPut('iso-' + slot, handle);
+    return file;
+  }
+  // saved folders (HD pack, saves) that Chrome wants a fresh OK for
+  async function foldersWaiting() {
+    const out = [];
+    for (const [k, mode] of [['hd', 'read'], ['saves', 'readwrite']]) {
+      try { const d = await idbGet(k); if (d && await d.queryPermission({ mode }) !== 'granted') out.push(k === 'hd' ? 'HD textures' : 'saves folder'); } catch (e) {}
+    }
+    return out;
+  }
+  // one click (a user gesture) re-allows every saved handle: discs and the saves folder
+  async function allowAll() {
+    for (const h of Object.values(needsAllow)) { try { await h.requestPermission({ mode: 'read' }); } catch (e) {} }
+    try { const d = await idbGet('saves'); if (d) await d.requestPermission({ mode: 'readwrite' }); } catch (e) {}
+    try { const d = await idbGet('hd'); if (d) await d.requestPermission({ mode: 'read' }); } catch (e) {}
   }
   // ISO 9660: find SYSTEM.CNF and the boot program in the root directory
   async function isoInfo(read) {
@@ -1274,8 +1325,8 @@ const TD = (() => {
   }
   // no-shake: the Remaster's per-car camera mod, laid over the original disc as it is read (only digits change)
   let shakeRuns = null;
-  async function loadShake() {
-    const b = new Uint8Array(await (await fetch('noshake.ov')).arrayBuffer());
+  async function loadShake(url) {
+    const b = new Uint8Array(await (await fetch(url)).arrayBuffer());
     const dv = new DataView(b.buffer);
     const runs = [];
     if (ascii(b.subarray(0, 4)) !== 'TDOV') return null;
@@ -1306,7 +1357,11 @@ const TD = (() => {
       Module.discFile = file;
       Module.discSize = file.size;
       const raw = fileReader(file);
-      if (settings.shake !== '1' && file.size === ORIGINAL_SIZE && slot === 'original') shakeRuns = await loadShake().catch(() => null);
+      // locked camera (nocam.ov) already includes every no-shake value, so one overlay or the other
+      if (file.size === ORIGINAL_SIZE && slot === 'original') {
+        if (settings.cam === '0') shakeRuns = await loadShake('nocam.ov').catch(() => null);
+        else if (settings.shake !== '1') shakeRuns = await loadShake('noshake.ov').catch(() => null);
+      }
       read = async (o, n) => overlay(await raw(o, n), o);
     } else if (info && info[slot]) {
       const r = await fetch(url, { method: 'HEAD' });
@@ -1333,27 +1388,45 @@ const TD = (() => {
   const DB = 'tfatftd', STORE = 'handles';
   const idb = () => new Promise((res, rej) => { const r = indexedDB.open(DB, 1); r.onupgradeneeded = () => r.result.createObjectStore(STORE); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
   async function idbGet(k) { const d = await idb(); return new Promise((res) => { const t = d.transaction(STORE).objectStore(STORE).get(k); t.onsuccess = () => res(t.result); t.onerror = () => res(null); }); }
+  async function idbDel(k) { const d = await idb(); return new Promise((res) => { const t = d.transaction(STORE, 'readwrite').objectStore(STORE).delete(k); t.onsuccess = () => res(); t.onerror = () => res(); }); }
   async function idbPut(k, v) { const d = await idb(); return new Promise((res) => { const t = d.transaction(STORE, 'readwrite').objectStore(STORE).put(v, k); t.onsuccess = () => res(); t.onerror = () => res(); }); }
+  // pick: always open the folder picker (so a wrong folder can be swapped); the caller saves it once it checks out
+  async function hdPick() { return showDirectoryPicker({ id: 'tfatftd-hd', mode: 'read' }); }
+  async function hdSave(dir) { await idbPut('hd', dir); }
+  async function hdForget() { await idbDel('hd'); }
   async function hdFolder(ask) {
     let dir = await idbGet('hd');
-    if (!dir && ask) { dir = await showDirectoryPicker({ id: 'tfatftd-hd', mode: 'read' }); await idbPut('hd', dir); }
     if (!dir) return null;
     let perm = await dir.queryPermission({ mode: 'read' });
     if (perm !== 'granted' && ask) perm = await dir.requestPermission({ mode: 'read' });
     return perm === 'granted' ? dir : { needsPermission: true, name: dir.name };
   }
+  // saves folder: a real folder on the player's drive that gets Mcd001.ps2 after every save
+  async function savesFolder(ask) {
+    let dir = await idbGet('saves');
+    if (ask) { dir = await showDirectoryPicker({ id: 'tfatftd-saves', mode: 'readwrite' }); await idbPut('saves', dir); }
+    if (!dir) return null;
+    let perm = await dir.queryPermission({ mode: 'readwrite' });
+    if (perm !== 'granted' && ask) perm = await dir.requestPermission({ mode: 'readwrite' });
+    return perm === 'granted' ? dir : { needsPermission: true, name: dir.name };
+  }
   // the pack zip unzips to <folder>/replacements/*.png + <folder>/sky/*.png; picking either level works
   async function hdList(top) {
     const pattern = /^[0-9a-f]{1,16}(-[0-9a-f]{1,16})?-[0-9a-f]{8}\.png$/;
-    let dir = top;
-    try { dir = await top.getDirectoryHandle('replacements'); } catch (e) {}
+    let dir = top, inside = false;
+    try { dir = await top.getDirectoryHandle('replacements'); inside = true; } catch (e) {}
     const names = [];
-    for await (const [name, h] of dir.entries()) if (h.kind === 'file' && pattern.test(name)) names.push(name);
+    let seen = 0;
+    for await (const [name, h] of dir.entries()) {
+      if (h.kind === 'file' && pattern.test(name)) names.push(name);
+      // a wrong folder (Documents, a whole drive...) has no texture names up front: give up instead of scanning forever
+      if (++seen > 3000 && !inside && names.length === 0) break;
+    }
     let sky = null;
     for (const where of [top, dir]) { if (sky) break; try { sky = await where.getDirectoryHandle('sky'); } catch (e) {} }
     return { names, sky, dir };
   }
-  return { server, stored, store, remove, prepare, hdFolder, hdList, gb };
+  return { server, stored, store, remove, link, linked, needsAllow, allowAll, foldersWaiting, prepare, hdFolder, hdPick, hdSave, hdForget, hdList, savesFolder, gb, idbGet, idbPut, idbDel };
 })();
 var Module = {
   canvas,
@@ -1405,8 +1478,15 @@ var Module = {
         FS.mkdir(CARD_DIR);
         FS.mount(IDBFS, {}, CARD_DIR);
         Module.addRunDependency('card');
-        FS.syncfs(true, (err) => {
+        FS.syncfs(true, async (err) => {
           if (err) console.warn('memory card: could not read browser storage', err);
+          try {
+            const dir = typeof showDirectoryPicker === 'function' ? await TD.savesFolder(false) : null;
+            if (dir && !dir.needsPermission) {
+              const f = await (await dir.getFileHandle('Mcd001.ps2')).getFile();
+              if (f.size === CARD_BYTES) { FS.writeFile(CARD_FILE, new Uint8Array(await f.arrayBuffer())); console.log('memory card: loaded from saves folder ' + dir.name); }
+            }
+          } catch (e) { /* no card in the folder yet */ }
           Module.removeRunDependency('card');
         });
       } catch (e) {
@@ -1461,13 +1541,32 @@ var Module = {
         document.getElementById('start').textContent = 'Load your disc first';
         // after a reload the player chose (HD folder, a setting), stay on their tab and say why Play is off
         const back = window.tdBackTab;
+        if (Object.keys(TD.needsAllow).length) {
+          // Chrome forgets file permission between visits: one click lets the site read the disc off your drive again
+          const start = document.getElementById('start');
+          help.textContent = 'Chrome needs your OK to read the disc from your drive again. Press the button, then pick "Allow on every visit" so it stops asking.';
+          start.textContent = 'Allow disc access';
+          start.disabled = false;
+          start.addEventListener('click', async (e) => { e.stopImmediatePropagation(); await TD.allowAll(); location.reload(); }, { capture: true, once: true });
+          statusEl.textContent = 'Disc needs your OK, ' + gpu;
+          return;
+        }
         const tab = document.querySelector('[data-tab="' + (back || 'data') + '"]');
         if (tab) tab.click();
         if (back && back !== 'data') help.textContent = 'Saved! Now load your Tokyo Drift ISO in the Game data tab to play. (This site keeps its own copy of the disc, so it needs loading once here.)';
         statusEl.textContent = 'No disc loaded, ' + gpu;
         return;
       }
-      statusEl.textContent = 'Disc ' + (Module.discSize / 1073741824).toFixed(2) + ' GB' + (disc.file ? ' (in this browser)' : '') + ', ' + gpu;
+      statusEl.textContent = 'Disc ' + (Module.discSize / 1073741824).toFixed(2) + ' GB' + (disc.file ? ' (on this PC)' : '') + ', ' + gpu;
+      // HD pack / saves folder picked before but Chrome wants a fresh OK: the first press of Play gives it, then restarts
+      TD.foldersWaiting().then((waiting) => {
+        if (!waiting.length) return;
+        const start = document.getElementById('start'), help = document.getElementById('help');
+        help.textContent = 'Chrome needs your OK again for your ' + waiting.join(' and ') + '. Press Allow, then pick "Allow on every visit" so it stops asking.';
+        help.hidden = false;
+        start.textContent = 'Allow ' + waiting.join(' + ');
+        start.addEventListener('click', async (e) => { e.stopImmediatePropagation(); e.preventDefault(); await TD.allowAll(); location.reload(); }, { capture: true, once: true });
+      });
       Module.removeRunDependency('disc');
     });
   }],
@@ -1635,6 +1734,30 @@ const TDSaves = (() => {
         storeCard(() => say('backup-status', 'Memory card restored from ' + file.name + '.', 'ok'));
       } catch (e) { say('backup-status', e.message, 'warn'); }
     });
+    (async () => {
+      const n = $('saves-folder-note');
+      if (typeof showDirectoryPicker !== 'function') { n.textContent = 'Saves folder needs desktop Chrome or Edge. Use Export .ps2 to keep a copy.'; $('saves-folder-pick').disabled = true; return; }
+      const d = await TD.savesFolder(false).catch(() => null);
+      if (d && !d.needsPermission) n.textContent = 'Saving to ' + d.name + '\\Mcd001.ps2 after every save.';
+      else if (d) n.textContent = 'Saves folder ' + d.name + ' needs your OK again: press Choose folder, or the Allow button when you start.';
+    })();
+    $('saves-folder-pick').addEventListener('click', async () => {
+      const n = $('saves-folder-note');
+      try {
+        const d = await TD.savesFolder(true);
+        if (!d || d.needsPermission) { n.textContent = 'Chrome did not allow writing there. Try again and press Allow / Save changes.'; return; }
+        let had = null;
+        try { had = await (await d.getFileHandle('Mcd001.ps2')).getFile(); } catch (e) {}
+        if (had && had.size === CARD_BYTES && confirm('That folder already has a memory card (Mcd001.ps2, saved ' + new Date(had.lastModified).toLocaleString() + '). Use it? (Cancel keeps the card in this browser and copies it there instead.)')) {
+          FS.writeFile(CARD_FILE, new Uint8Array(await had.arrayBuffer()));
+          storeCard();
+          n.textContent = 'Loaded your card from ' + d.name + '. Every save will be copied back there.';
+        } else {
+          await mirrorCard();
+          n.textContent = 'Saving to ' + d.name + '\\Mcd001.ps2 after every save.';
+        }
+      } catch (e) { if (e.name !== 'AbortError') n.textContent = e.message; }
+    });
     $('launch-export-card').addEventListener('click', () => document.getElementById('export-card').click());
     $('launch-import-card').addEventListener('click', () => document.getElementById('import-card').click());
   }
@@ -1660,7 +1783,7 @@ const TDSaves = (() => {
   // put the player back on the tab they were on before a reload
   try { window.tdBackTab = sessionStorage.getItem('td_tab'); sessionStorage.removeItem('td_tab'); } catch (e) {}
   if (window.tdBackTab) { const t = document.querySelector('#launcher [data-tab="' + window.tdBackTab + '"]'); if (t) t.click(); }
-  const reloadOn = new Set(['disc', 'scale', 'hd', 'shake', 'sky']);
+  const reloadOn = new Set(['disc', 'scale', 'hd', 'shake', 'sky', 'cam']);
   for (const key of Object.keys(DEFAULTS)) {
     const el = $('set-' + key);
     if (!el) continue;
@@ -1784,20 +1907,34 @@ const TDSaves = (() => {
   let pickSlot = 'original';
   const show = async () => {
     for (const slot of ['original', 'remaster']) {
-      const f = await TD.stored(slot), info = await TD.server;
+      const f = await TD.stored(slot), info = await TD.server, h = await TD.linked(slot);
       const el = $('data-' + slot);
-      if (f) el.textContent = 'Loaded in this browser: ' + TD.gb(f.size) + '.';
+      if (h && f) el.textContent = 'Read straight from your drive: ' + h.name + ' (' + TD.gb(f.size) + '). Nothing is copied.';
+      else if (h) el.textContent = 'Linked to ' + h.name + ' on your drive. Chrome will ask for your OK when you start.';
+      else if (f) el.textContent = 'Loaded in this browser: ' + TD.gb(f.size) + '. Press Load ISO once to read it from your drive instead (safer, frees 2 GB).';
       else if (info && info[slot]) el.textContent = 'Played from the disc on your PC (game server). You can also load it into this browser.';
       else el.textContent = slot === 'original' ? 'Not loaded. Press Load ISO and pick your Tokyo Drift (USA) disc image. This copies it into the browser once (2.3 GB).' : 'Optional: your Tokyo Drift Remaster ISO. Choose it in Settings > Disc.';
-      $('data-del-' + slot).disabled = !f;
+      $('data-del-' + slot).disabled = !f && !h;
     }
     const est = await navigator.storage.estimate().catch(() => null);
-    if (est) $('data-storage').textContent = 'This site uses ' + TD.gb(est.usage || 0) + ' of browser storage. Your disc is copied here once and never leaves your device.';
+    if (est) $('data-storage').textContent = 'This site uses ' + TD.gb(est.usage || 0) + ' of browser storage. Your disc is read from your own drive and never leaves your device.';
   };
   for (const slot of ['original', 'remaster']) {
-    $('data-pick-' + slot).addEventListener('click', () => { pickSlot = slot; $('iso-file').value = ''; $('iso-file').click(); });
+    $('data-pick-' + slot).addEventListener('click', async () => {
+      pickSlot = slot;
+      if (typeof showOpenFilePicker !== 'function') { $('iso-file').value = ''; $('iso-file').click(); return; }
+      const el = $('data-' + slot);
+      try {
+        const [h] = await showOpenFilePicker({ id: 'tfatftd-iso', types: [{ description: 'PS2 disc image', accept: { 'application/octet-stream': ['.iso'] } }] });
+        el.textContent = 'Checking the disc...';
+        await TD.link(slot, h);
+        el.textContent = 'Done! Starting...';
+        if (slot === 'remaster') { settings.disc = 'remaster'; saveSettings(); }
+        setTimeout(() => location.reload(), 500);
+      } catch (e) { if (e.name !== 'AbortError') el.textContent = e.message; }
+    });
     $('data-del-' + slot).addEventListener('click', async () => {
-      if (!confirm('Delete the ' + slot + ' disc from this browser? (Your saves are not touched.)')) return;
+      if (!confirm('Unlink the ' + slot + ' disc from this site? (The ISO file on your drive and your saves are not touched.)')) return;
       await TD.remove(slot);
       show();
     });
@@ -1822,10 +1959,22 @@ const TDSaves = (() => {
   });
   $('hdpack-pick').addEventListener('click', async () => {
     if (typeof showDirectoryPicker !== 'function') { $('hdpack-note').textContent = 'This browser cannot open folders. Use desktop Chrome or Edge for HD textures.'; return; }
+    const note = $('hdpack-note');
     try {
-      const dir = await TD.hdFolder(true);
-      if (dir && !dir.needsPermission) { settings.hd = '1'; saveSettings(); location.reload(); }
-    } catch (e) { if (e.name !== 'AbortError') $('hdpack-note').textContent = e.message; }
+      const dir = await TD.hdPick();
+      note.textContent = 'Checking ' + dir.name + '...';
+      const { names, sky } = await TD.hdList(dir);
+      if (!names.length) { note.textContent = 'No HD textures in "' + dir.name + '". Pick the SLUS-21449 folder (the one with replacements and sky inside). Nothing was changed.'; return; }
+      await TD.hdSave(dir);
+      settings.hd = '1'; saveSettings();
+      note.textContent = names.length.toLocaleString() + ' textures' + (sky ? ' + remastered sky' : '') + ' found. Restarting...';
+      setTimeout(() => location.reload(), 500);
+    } catch (e) { if (e.name !== 'AbortError') note.textContent = e.message; }
+  });
+  $('hdpack-forget').addEventListener('click', async () => {
+    await TD.hdForget();
+    $('hdpack-note').textContent = 'HD folder forgotten. Press Choose folder to pick it again.';
+    $('hd-note').textContent = 'No HD pack picked yet. Download it below, unzip, then press Choose folder.';
   });
   show();
 })();
