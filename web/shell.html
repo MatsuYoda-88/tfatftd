@@ -26,6 +26,10 @@
     background: #141418; border: 1px solid #2a2a33; border-radius: 8px; max-height: 70vh; overflow-y: auto; }
   #menu[hidden] { display: none; }
   body.touch #menu button, body.touch #menu select { padding: 8px 12px; font-size: 14px; }
+  #overlay[hidden] { display: none !important; }
+  body.ingame #overlay { background: rgba(0,0,0,.82); z-index: 20; }
+  #restart-note { margin: 6px 0; padding: 8px 10px; background: #3a2a12; color: #f3c46b; border-radius: 6px; }
+  #restart-note button { margin-left: 6px; }
   #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.6); padding: 16px; }
   #panel { display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: 520px; text-align: center; }
   #help { margin: 0; line-height: 1.5; color: #e8c37a; }
@@ -168,6 +172,7 @@
 <div id="bar"><span id="status">Loading…</span><span id="stats"></span>
   <button id="invite" class="host-only" type="button" disabled title="Make a room and copy a link that lets a friend watch and play as player 2">Invite</button>
   <button id="menu-toggle" type="button" aria-expanded="false" aria-controls="menu">Menu ▴</button>
+  <button id="game-settings" type="button" title="All settings, over the game (F1, or Select + Start on a controller)">Settings</button>
   <button id="fullscreen" type="button" title="Fullscreen (F or double click)">Fullscreen</button></div>
 <div id="menu" hidden>
   <select id="pad" aria-label="Player 1 gamepad" title="Gamepad for player 1, the next connected one is player 2 (press a button on a pad if it is missing)">
@@ -187,6 +192,7 @@
   <div class="brand"><h1>tfatftd.xyz</h1><div class="sub">The Fast and the Furious: Tokyo Drift &middot; PS2 recompiled &middot; WebGPU</div>
     <div class="notice">Fan project. Not affiliated with or endorsed by Universal, Bandai Namco or Eutechnyx. Bring your own disc.</div></div>
   <button id="start" disabled>Loading…</button>
+  <div id="restart-note" hidden>Some changes need a restart. <button id="restart-now" type="button">Restart now</button> <small>(progress since your last save is lost)</small></div>
   <p id="help" hidden></p>
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="settings" aria-selected="true">Settings</button>
@@ -198,6 +204,8 @@
   <section id="tab-settings">
     <div class="row"><div><b>Disc</b><small>Which ISO to play. The Remaster has your handling mods; both use the same recompiled game.</small></div>
       <select id="set-disc"><option value="original">Original (SLUS-21449)</option><option value="remaster">Remaster v1.0</option></select></div>
+    <div class="row"><div><b>Skip intros</b><small>Boots straight to PRESS START: no logos, intro movie or the long car-maker credit screens. Applies the next time the game starts.</small></div>
+      <select id="set-skip"><option value="1">On</option><option value="0">Off (original)</option></select></div>
     <div class="row"><div><b>Aspect ratio</b><small>Widens the game's field of view (no stretching) and the picture. Auto matches your screen.</small></div>
       <select id="set-aspect"><option value="auto">Auto</option><option value="4:3">4:3 (original)</option><option value="16:9">16:9</option><option value="21:9">21:9</option><option value="32:9">32:9 super ultrawide</option></select></div>
     <div class="row"><div><b>HUD &amp; text shape</b><small>Widescreen only. Correct = speedo, map and text keep their real shape and hug the screen edges instead of being stretched wide. Turn it off if anything looks wrong.</small></div>
@@ -362,7 +370,7 @@ const params = new URLSearchParams(location.search);
 // ===== TokyoDriftWeb settings (saved in this browser, applied when you press Play) =====
 const SETTINGS_KEY = 'tdweb-settings';
 const PHONE = matchMedia('(pointer: coarse)').matches;
-const DEFAULTS = { disc: 'original', aspect: 'auto', scale: PHONE ? '1' : '2', fullscreen: PHONE ? '1' : '0', aa: '0', stats: '1', hd: PHONE ? '0' : '1', shake: '0', haze: '0', blur: '1', bloom: '1', sky: '1', hud: '1', menus43: '1', touch: 'auto', cam: '1' };
+const DEFAULTS = { disc: 'original', aspect: 'auto', scale: PHONE ? '1' : '2', fullscreen: PHONE ? '1' : '0', aa: '0', stats: '1', hd: PHONE ? '0' : '1', shake: '0', haze: '0', blur: '1', bloom: '1', sky: '1', hud: '1', menus43: '1', touch: 'auto', cam: '1', skip: '1' };
 let settings = { ...DEFAULTS };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) {}
 function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {} }
@@ -1800,7 +1808,7 @@ const TDSaves = (() => {
       if (key === 'bloom' || key === 'hud' || key === 'menus43') applyVideo();
       if (key === 'touch') updateControls();
       if (key === 'aa') { aaInput.checked = el.value === '1'; aaInput.dispatchEvent(new Event('change')); }
-      if (reloadOn.has(key)) location.reload();
+      if (reloadOn.has(key)) { if (inGame) needRestart(); else location.reload(); }
     });
   }
   const aspectNote = document.createElement('small');
@@ -1821,7 +1829,7 @@ const TDSaves = (() => {
   };
   requestAnimationFrame(measure);
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'Enter' && document.getElementById('overlay') && !$('start').disabled && !(e.target instanceof HTMLSelectElement)) { e.preventDefault(); $('start').click(); }
+    if (e.code === 'Enter' && !inGame && document.getElementById('overlay') && !$('start').disabled && !(e.target instanceof HTMLSelectElement)) { e.preventDefault(); $('start').click(); }
   }, true);
   // Disc picker: grey out the Remaster if this PC has no Remaster ISO
   fetch('remaster.iso', { method: 'HEAD' }).then((r) => {
@@ -2012,8 +2020,55 @@ if (guestRoom) {
   statusEl.textContent = 'Invited to room ' + guestRoom;
 }
 
+// ===== In-game menu: the launcher (all settings, saves, controls, game data) over the paused game =====
+var inGame = false;
+let gameMenuOpen = false;
+function openGameMenu(tab) {
+  if (!inGame || gameMenuOpen) return;
+  gameMenuOpen = true;
+  if (Module._ps2web_pause) Module._ps2web_pause(1);
+  document.getElementById('overlay').hidden = false;
+  const t = document.querySelector('#launcher [data-tab="' + (tab || 'settings') + '"]');
+  if (t) t.click();
+  document.getElementById('start').focus();
+}
+function closeGameMenu() {
+  if (!gameMenuOpen) return;
+  gameMenuOpen = false;
+  document.getElementById('overlay').hidden = true;
+  if (typeof keys !== 'undefined') keys.clear();
+  if (Module._ps2web_pause) Module._ps2web_pause(0);
+  canvas.focus();
+}
+function toggleGameMenu() { if (gameMenuOpen) closeGameMenu(); else openGameMenu(); }
+function needRestart() { document.getElementById('restart-note').hidden = false; }
+document.getElementById('restart-now').addEventListener('click', () => {
+  if (confirm('Restart the game now to apply the changes? Anything since your last save is lost.')) location.reload();
+});
+document.getElementById('game-settings').addEventListener('click', () => openGameMenu());
+window.addEventListener('keydown', (e) => {
+  if (!inGame) return;
+  if (e.code === 'F1') { e.preventDefault(); e.stopImmediatePropagation(); toggleGameMenu(); }
+  else if (e.code === 'Escape' && gameMenuOpen) { e.preventDefault(); closeGameMenu(); }
+  else if (gameMenuOpen && e.code in keyMap) e.stopImmediatePropagation();
+}, true);
+// controller: Select + Start together opens / closes the menu
+let comboHeld = false;
+function pollMenuCombo() {
+  if (!inGame) return;
+  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const held = pads.some((g) => g.buttons[8] && g.buttons[9] && g.buttons[8].pressed && g.buttons[9].pressed);
+  if (held && !comboHeld) toggleGameMenu();
+  comboHeld = held;
+}
+setInterval(pollMenuCombo, 50);
+
 document.getElementById('start').addEventListener('click', async () => {
-  document.getElementById('overlay').remove();
+  if (inGame) { closeGameMenu(); return; }
+  inGame = true;
+  document.getElementById('overlay').hidden = true;
+  document.body.classList.add('ingame');
+  document.getElementById('start').textContent = 'Back to game (F1)';
   if (settings.fullscreen === '1' && !guestRoom) toggleFullscreen();
   if (guestRoom) {
     startGuest();
@@ -2026,6 +2081,7 @@ document.getElementById('start').addEventListener('click', async () => {
   Module.running = true;
   setStateBusy(false);
   inviteButton.disabled = false;
+  if (settings.skip !== '0' && !Module.arguments.includes('--skip-intro') && !Module.stateUrl) Module.arguments.push('--skip-intro');
   Module.callMain(Module.arguments);
 });
 

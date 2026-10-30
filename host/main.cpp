@@ -58,6 +58,8 @@ int main(int argc, char **argv) {
                 ps2::g_options.aspect = w / h;
                 ps2::g_options.widescreen = w / h > 1.34f;
             }
+        } else if (a == "--skip-intro") {
+            ps2::g_options.skip_intro = true;
         } else if (a == "--patch" && i + 1 < argc) {
             unsigned place = 0, bytes = 0;
             unsigned long address = 0;

@@ -37,6 +37,7 @@
 #include <stdexcept>
 
 namespace ps2 {
+void end_intro_skip(const char *why);
 
 Cpu g_cpu;
 Options g_options;
@@ -167,6 +168,7 @@ void apply_patches(bool boot) {
 
 void vblank() {
     ++g_frames;
+    if (g_frames >= 7200 && intro_turbo()) end_intro_skip("intro skip timed out");
     if (static const char *td = std::getenv("PS2_TRACE_DRAWS"); td) {
         static const std::uint64_t at = std::strtoull(td, nullptr, 10);
         if (g_frames == at) gs::trace_draws(true);
@@ -414,8 +416,28 @@ void request_iop_sync() {
     if (g_cpu.budget > 64) set_budget(g_cpu, 64);
 }
 
+// ===== Skip intros (Tokyo Drift) =====
+// Fast-forward the boot: the host skips frame pacing (and mutes audio) while intro_turbo() is true,
+// and Cross + Start are tapped every 20 frames to get through the movies. Both stop the moment a
+// GSPressStart_c method runs (the title screen is up), or at frame 7200 as a hard stop.
+std::atomic<bool> g_intro_turbo{false};
+bool intro_turbo() { return g_intro_turbo.load(std::memory_order_relaxed); }
+void end_intro_skip(const char *why) {
+    if (!g_intro_turbo.exchange(false)) return;
+    g_options.presses.clear();
+    std::fprintf(stderr, "[skip] %s at frame %llu, back to normal speed\n", why, static_cast<unsigned long long>(g_frames));
+}
+void install_skip_intro() {
+    constexpr std::uint16_t kCross = 1u << 14, kStart = 1u << 3;
+    for (std::uint64_t f = 40; f < 7200; f += 20) g_options.presses.push_back({f, 3, static_cast<std::uint16_t>(kCross | kStart)});
+    g_intro_turbo.store(true);
+    static const std::uint32_t kTitle[] = {0x136F48, 0x1367F0, 0x136B58, 0x136BC0, 0x136C58};
+    for (std::uint32_t pc : kTitle) set_hook(pc, [](Cpu &) { end_intro_skip("title screen reached"); return false; });
+}
+
 void boot(std::uint32_t entry, const std::vector<std::string> &args) {
     mp::debug_init();
+    if (g_options.skip_intro) install_skip_intro();
     init_watch();
     hw::reset();
     kernel::reset();

@@ -271,6 +271,7 @@ void service_disc() {
 }
 
 void push_audio(const std::int16_t *samples, std::size_t frames) {
+    if (ps2::intro_turbo()) return;  // fast-forwarded intro: silence instead of chipmunk noise
     std::uint32_t write = g_audio.write.load(std::memory_order_relaxed);
     const std::uint32_t read = g_audio.read.load(std::memory_order_acquire);
     for (std::size_t i = 0; i < frames && write - read < kAudioFrames; ++i, ++write) {
@@ -300,9 +301,13 @@ void pace() {
     if (g_next_frame > now) usleep(static_cast<useconds_t>((g_next_frame - now) * 1000.0));
 }
 
+std::atomic<int> g_paused{0};
+
 void on_vblank() {
     const double start = emscripten_get_now();
-    pace();
+    // in-game settings menu open: hold the game at the end of this frame (pace() re-syncs afterwards)
+    while (g_paused.load(std::memory_order_relaxed)) usleep(16000);
+    if (!ps2::intro_turbo()) pace();
     g_emulation_idle.store(g_emulation_idle.load() + emscripten_get_now() - start);
 }
 
@@ -372,6 +377,7 @@ std::atomic<bool> g_streaming{false};
 extern "C" EMSCRIPTEN_KEEPALIVE void ps2web_stream(int on) { g_streaming.store(on != 0); }
 
 extern "C" EMSCRIPTEN_KEEPALIVE void ps2web_trace_frame() { ps2::request_draw_trace(); }
+extern "C" EMSCRIPTEN_KEEPALIVE void ps2web_pause(int on) { g_paused.store(on ? 1 : 0); }
 extern "C" EMSCRIPTEN_KEEPALIVE void ps2web_video_options(int flags) { ps2::set_video_options(static_cast<std::uint32_t>(flags)); }
 
 extern "C" EMSCRIPTEN_KEEPALIVE double ps2web_gpu_ms() { return ps2::gpu_busy_ms(); }
@@ -399,6 +405,8 @@ int main(int argc, char **argv) {
                 ps2::g_options.aspect = w / h;
                 ps2::g_options.widescreen = w / h > 1.34f;
             }
+        } else if (a == "--skip-intro") {
+            ps2::g_options.skip_intro = true;
         } else if (a == "--patch" && i + 1 < argc) {
             // --patch place:address:bytes:value (hex address/value), same fields as patches.txt
             unsigned place = 0, bytes = 0;

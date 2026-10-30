@@ -52,6 +52,7 @@ struct Options {
     std::string frames_dir;
     std::uint32_t frame_every = 60;
     std::vector<Press> presses;
+    bool skip_intro = false;   // tfatftd: shorten the boot credit screens and tap through the movies to PRESS START
     std::vector<AxisPress> axis_presses;
     std::vector<Patch> patches;
     std::function<void()> on_vblank;
@@ -142,4 +143,5 @@ void set_pad_connected(int pad, bool connected);
 std::uint16_t pad_rumble(int pad = 0);
 void set_audio_sink(std::function<void(const std::int16_t *samples, std::size_t frames)> sink);
 
+bool intro_turbo();   // tfatftd: boot fast-forward running (host skips pacing, mutes audio)
 }
