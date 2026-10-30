@@ -995,7 +995,10 @@ float hud_k() {
     return a > 1.34f ? (4.0f / 3.0f) / a : 1.0f;
 }
 // widescreen HUD squeeze switched off in v1.2 (it broke the game); kept for later
-bool hud_fix_on() { return false; }
+bool hud_fix_on() {
+    static const bool env_off = std::getenv("PS2_HUDFIX_OFF") != nullptr;
+    return ps2::g_options.aspect > 1.34f && !env_off && !(ps2::video_options() & (1u << 30));
+}
 
 std::uint64_t g_hud_fbp = ~0ull;
 std::atomic<bool> g_saw_composite{false};
@@ -1791,13 +1794,18 @@ void hd_loaded(std::uint32_t id, const std::uint8_t *rgba, std::uint32_t width, 
 bool gs::present_as_43() {
     static int flat = 0, deep = 0;
     static bool as43 = false;
-    return false;   // 4:3 menus switched off in v1.2 (it broke the game)
+    static unsigned long long calls = 0;
+    ++calls;
+    if (ps2::g_options.aspect <= 1.34f) return false;
     if (ps2::video_options() & (1u << 29)) return false;
     const bool composite = gs::g_saw_composite.exchange(false, std::memory_order_relaxed);
     if (gs::g_3d_draws.exchange(0, std::memory_order_relaxed) > 300 || composite) { deep++; flat = 0; }
     else { flat++; deep = 0; }
+    const bool was = as43;
     if (!as43 && flat >= 8) as43 = true;
     if (as43 && deep >= 2) as43 = false;
+    static const bool log43 = std::getenv("PS2_LOG_43") != nullptr;
+    if (log43 && was != as43) std::fprintf(stderr, "[43] frame %llu -> %s\n", calls, as43 ? "4:3" : "wide");
     return as43;
 }
 

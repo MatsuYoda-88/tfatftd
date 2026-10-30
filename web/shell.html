@@ -200,6 +200,10 @@
       <select id="set-disc"><option value="original">Original (SLUS-21449)</option><option value="remaster">Remaster v1.0</option></select></div>
     <div class="row"><div><b>Aspect ratio</b><small>Widens the game's field of view (no stretching) and the picture. Auto matches your screen.</small></div>
       <select id="set-aspect"><option value="auto">Auto</option><option value="4:3">4:3 (original)</option><option value="16:9">16:9</option><option value="21:9">21:9</option><option value="32:9">32:9 super ultrawide</option></select></div>
+    <div class="row"><div><b>HUD &amp; text shape</b><small>Widescreen only. Correct = speedo, map and text keep their real shape and hug the screen edges instead of being stretched wide. Turn it off if anything looks wrong.</small></div>
+      <select id="set-hud"><option value="1">Correct shape</option><option value="0">Stretched</option></select></div>
+    <div class="row"><div><b>Menus</b><small>Widescreen only. 4:3 shows menus, loading screens and movies at their real shape with dark sides.</small></div>
+      <select id="set-menus43"><option value="1">4:3 (real shape)</option><option value="0">Stretched</option></select></div>
     <div class="row"><div><b>Internal resolution</b><small>How sharp the 3D is drawn. Higher costs GPU time.</small></div>
       <select id="set-scale"><option value="1">1× (640×448) - native</option><option value="2">2× (1280×896)</option><option value="3">3× (1920×1344) - 1080p</option><option value="4">4× (2560×1792) - 1440p</option><option value="5">5× (3200×2240) - 4K</option><option value="6">6× (3840×2688)</option><option value="8">8× (5120×3584) - 5K</option><option value="10">10× (6400×4480) - 8K</option></select></div>
     <div class="row"><div><b>Display</b><small id="refresh-note">Measuring refresh rate…</small></div>
@@ -1791,7 +1795,7 @@ const TDSaves = (() => {
     el.addEventListener('change', () => {
       settings[key] = el.value;
       saveSettings();
-      if (key === 'aspect') { aspect = resolveAspect(el.value); Module.arguments = Module.arguments.filter((a, i, all) => !(a === '--aspect' || a === '--patch' || all[i - 1] === '--aspect' || all[i - 1] === '--patch')).concat(aspectArgs(aspect)); document.body.classList.toggle('wide', aspect !== '4:3'); }
+      if (key === 'aspect') { aspect = resolveAspect(el.value); Module.arguments = Module.arguments.filter((a, i, all) => !(a === '--aspect' || a === '--patch' || all[i - 1] === '--aspect' || all[i - 1] === '--patch')).concat(aspectArgs(aspect), shakeArgs()); document.body.classList.toggle('wide', aspect !== '4:3'); }
       if (key === 'stats') { statsToggle.checked = el.value === '1'; statsToggle.dispatchEvent(new Event('change')); }
       if (key === 'bloom' || key === 'hud' || key === 'menus43') applyVideo();
       if (key === 'touch') updateControls();

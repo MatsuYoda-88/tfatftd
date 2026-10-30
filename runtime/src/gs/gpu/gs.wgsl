@@ -12,7 +12,8 @@ struct Params {
 @group(0) @binding(7) var<storage, read_write> decoded: array<u32>;
 @group(0) @binding(8) var<storage, read> hdtex: array<u32>;
 
-override SCALE: u32 = 1u;
+override SX: u32 = 1u;
+override SY: u32 = 1u;
 
 const PSMCT32: u32 = 0x00u;
 const PSMCT24: u32 = 0x01u;
@@ -218,12 +219,12 @@ fn addr(f: Fmt, x: u32, y: u32) -> Loc {
 }
 
 fn load_at(l: Loc, k: u32) -> u32 {
-    return (atomicLoad(&vram[l.word * SCALE * SCALE + k]) >> l.shift) & l.mask;
+    return (atomicLoad(&vram[l.word * SX * SY + k]) >> l.shift) & l.mask;
 }
 
 fn read_sample(psm: u32, bp: u32, bw: u32, x: u32, y: u32, k: u32) -> u32 {
     let l = locate(psm, bp, bw, x, y);
-    return (atomicLoad(&vram[l.word * SCALE * SCALE + k]) >> l.shift) & l.mask;
+    return (atomicLoad(&vram[l.word * SX * SY + k]) >> l.shift) & l.mask;
 }
 
 fn read_pixel(psm: u32, bp: u32, bw: u32, x: u32, y: u32) -> u32 {
@@ -231,7 +232,7 @@ fn read_pixel(psm: u32, bp: u32, bw: u32, x: u32, y: u32) -> u32 {
 }
 
 fn store(l: Loc, k: u32, value: u32) {
-    let w = l.word * SCALE * SCALE + k;
+    let w = l.word * SX * SY + k;
     if (l.mask == 0xFFFFFFFFu) {
         atomicStore(&vram[w], value);
         return;
@@ -246,7 +247,7 @@ fn write_sample(psm: u32, bp: u32, bw: u32, x: u32, y: u32, k: u32, value: u32) 
 
 fn write_pixel(psm: u32, bp: u32, bw: u32, x: u32, y: u32, value: u32) {
     let l = locate(psm, bp, bw, x, y);
-    for (var k = 0u; k < SCALE * SCALE; k = k + 1u) {
+    for (var k = 0u; k < SX * SY; k = k + 1u) {
         store(l, k, value);
     }
 }
@@ -315,7 +316,7 @@ fn upload(@builtin(global_invocation_id) gid: vec3<u32>) {
 fn copy_read(@builtin(global_invocation_id) gid: vec3<u32>) {
     let i = gid.x + gid.y * 64u * 1024u;
     let w = prm(5u);
-    let n = SCALE * SCALE;
+    let n = SX * SY;
     if (i >= w * prm(6u) * n) {
         return;
     }
@@ -330,7 +331,7 @@ fn copy_write(@builtin(global_invocation_id) gid: vec3<u32>) {
     let i = gid.x + gid.y * 64u * 1024u;
     let w = prm(5u);
     let h = prm(6u);
-    let n = SCALE * SCALE;
+    let n = SX * SY;
     if (i >= w * h * n) {
         return;
     }
@@ -390,8 +391,8 @@ fn load_clut(@builtin(local_invocation_index) k: u32) {
 
 @compute @workgroup_size(8, 8)
 fn display(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let w = prm(5u) * SCALE;
-    let h = prm(6u) * SCALE;
+    let w = prm(5u) * SX;
+    let h = prm(6u) * SY;
     if (gid.x >= w || gid.y >= h) {
         return;
     }
@@ -400,7 +401,7 @@ fn display(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (prm(7u) != 0u) {
         sy = gid.y / 2u;
     }
-    var c = read_sample(psm, prm(0u), prm(1u), prm(3u) + gid.x / SCALE, prm(4u) + sy / SCALE, (sy % SCALE) * SCALE + gid.x % SCALE);
+    var c = read_sample(psm, prm(0u), prm(1u), prm(3u) + gid.x / SX, prm(4u) + sy / SY, (sy % SY) * SX + gid.x % SX);
     if (psm == PSMCT16 || psm == PSMCT16S) {
         c = ((c & 0x1Fu) << 3u) | ((c & 0x3E0u) << 6u) | ((c & 0x7C00u) << 9u);
     }
@@ -559,7 +560,7 @@ var<private> snapshot_hi: u32 = 0u;
 
 fn load_texel(l: Loc, k: u32) -> u32 {
     if (l.word >= snapshot_lo && l.word < snapshot_hi) {
-        return (scratch[(l.word - snapshot_lo) * SCALE * SCALE + k] >> l.shift) & l.mask;
+        return (scratch[(l.word - snapshot_lo) * SX * SY + k] >> l.shift) & l.mask;
     }
     return load_at(l, k);
 }
@@ -1039,7 +1040,7 @@ fn shade_at(p: u32, s: Setup, x: i32, y: i32, k: u32, px: f32, py: f32) {
             }
             let cx = f32(x);
             let cy = f32(y);
-            if (SCALE > 1u && (cx < min(x0, x0 + dx) || cx >= max(x0, x0 + dx) || cy < min(y0, y0 + dy) || cy >= max(y0, y0 + dy))) {
+            if (SX * SY > 1u && (cx < min(x0, x0 + dx) || cx >= max(x0, x0 + dx) || cy < min(y0, y0 + dy) || cy >= max(y0, y0 + dy))) {
                 return;
             }
             var tx = 0.0;
@@ -1122,7 +1123,7 @@ fn snapshot(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (i >= prm(1u)) {
         return;
     }
-    scratch[i] = atomicLoad(&vram[prm(0u) * SCALE * SCALE + i]);
+    scratch[i] = atomicLoad(&vram[prm(0u) * SX * SY + i]);
 }
 
 @compute @workgroup_size(64)
@@ -1131,7 +1132,7 @@ fn resolve(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (i >= 1048576u) {
         return;
     }
-    scratch[i] = atomicLoad(&vram[i * SCALE * SCALE]);
+    scratch[i] = atomicLoad(&vram[i * SX * SY]);
 }
 
 @compute @workgroup_size(16, 16)
@@ -1144,11 +1145,11 @@ fn raster(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_id) l
     let origin = data[tile];
     let sx = (origin & 0xFFFFu) * 16u + lid.x;
     let sy = (origin >> 16u) * 16u + lid.y;
-    let x = i32(sx / SCALE);
-    let y = i32(sy / SCALE);
-    let k = (sy % SCALE) * SCALE + sx % SCALE;
-    let px = f32(x) + f32(sx % SCALE) / f32(SCALE);
-    let py = f32(y) + f32(sy % SCALE) / f32(SCALE);
+    let x = i32(sx / SX);
+    let y = i32(sy / SY);
+    let k = (sy % SY) * SX + sx % SX;
+    let px = f32(x) + f32(sx % SX) / f32(SX);
+    let py = f32(y) + f32(sy % SY) / f32(SY);
     let first = data[tile + 1u];
     let count = data[tile + 3u] - first;
     let lists = prm(4u);
