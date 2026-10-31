@@ -1037,7 +1037,10 @@ bool hud_squeeze(const State &s, int needed, Vertex *out) {
     if (key != r.key || x0 > r.maxx + 48.0f || x1 < r.minx - 48.0f) {
         const float c = (x0 + x1) * 0.5f;
         r.key = key; r.minx = x0; r.maxx = x1;
-        r.anchor = c < 160.0f ? 0.0f : c > 480.0f ? 640.0f : 320.0f;
+        // one shared anchor: the whole HUD is squeezed as a single 4:3 picture in the middle, so glyphs,
+        // panels and their frames can never drift apart (per-element edge anchors broke the pause menu)
+        r.anchor = 320.0f;
+        (void)c;
     } else {
         r.minx = std::min(r.minx, x0); r.maxx = std::max(r.maxx, x1);
     }

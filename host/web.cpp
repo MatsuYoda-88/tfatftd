@@ -11,6 +11,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstring>
+#include "ps2/mp.hpp"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -377,6 +379,22 @@ std::atomic<bool> g_streaming{false};
 extern "C" EMSCRIPTEN_KEEPALIVE void ps2web_stream(int on) { g_streaming.store(on != 0); }
 
 extern "C" EMSCRIPTEN_KEEPALIVE void ps2web_trace_frame() { ps2::request_draw_trace(); }
+// Online v0.01: 16 floats = pos[3] rot[9] vel[3] world
+extern "C" EMSCRIPTEN_KEEPALIVE int ps2web_mp_local(float *out) {
+    ps2::mp::Pose p;
+    int world = 0;
+    if (!ps2::mp::local_pose(p, world)) return 0;
+    std::memcpy(out, p.pos, 12); std::memcpy(out + 3, p.rot, 36); std::memcpy(out + 12, p.vel, 12);
+    out[15] = static_cast<float>(world);
+    return 1;
+}
+// the game's view camera: 12 floats = right[3] up[3] forward[3] position[3]
+extern "C" EMSCRIPTEN_KEEPALIVE int ps2web_mp_camera(float *out) { return ps2::mp::camera_pose(out) ? 1 : 0; }
+extern "C" EMSCRIPTEN_KEEPALIVE void ps2web_mp_remote(int slot, const float *in, int present) {
+    ps2::mp::Pose p;
+    if (present && in) { std::memcpy(p.pos, in, 12); std::memcpy(p.rot, in + 3, 36); std::memcpy(p.vel, in + 12, 12); }
+    ps2::mp::set_remote(slot, p, present && in);
+}
 extern "C" EMSCRIPTEN_KEEPALIVE void ps2web_pause(int on) { g_paused.store(on ? 1 : 0); }
 extern "C" EMSCRIPTEN_KEEPALIVE void ps2web_video_options(int flags) { ps2::set_video_options(static_cast<std::uint32_t>(flags)); }
 

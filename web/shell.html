@@ -199,6 +199,7 @@
     <button role="tab" data-tab="saves" aria-selected="false">Saves</button>
     <button role="tab" data-tab="controls" aria-selected="false">Controls</button>
     <button role="tab" data-tab="data" aria-selected="false">Game data</button>
+    <button role="tab" data-tab="online" aria-selected="false">Online</button>
     <button role="tab" data-tab="about" aria-selected="false">About</button>
   </nav>
   <section id="tab-settings">
@@ -208,8 +209,8 @@
       <select id="set-skip"><option value="1">On</option><option value="0">Off (original)</option></select></div>
     <div class="row"><div><b>Aspect ratio</b><small>Widens the game's field of view (no stretching) and the picture. Auto matches your screen.</small></div>
       <select id="set-aspect"><option value="auto">Auto</option><option value="4:3">4:3 (original)</option><option value="16:9">16:9</option><option value="21:9">21:9</option><option value="32:9">32:9 super ultrawide</option></select></div>
-    <div class="row"><div><b>HUD &amp; text shape</b><small>Widescreen only. Correct = speedo, map and text keep their real shape and hug the screen edges instead of being stretched wide. Turn it off if anything looks wrong.</small></div>
-      <select id="set-hud"><option value="1">Correct shape</option><option value="0">Stretched</option></select></div>
+    <div class="row"><div><b>HUD &amp; text shape</b><small>Widescreen only. Centered (beta) = the HUD, pause menu and text keep their real shape as one 4:3 picture in the middle of the screen. Stretched = how the game draws it, spread across the whole width.</small></div>
+      <select id="set-hud"><option value="0">Stretched</option><option value="2">Centered 4:3 (beta)</option></select></div>
     <div class="row"><div><b>Menus</b><small>Widescreen only. 4:3 shows menus, loading screens and movies at their real shape with dark sides.</small></div>
       <select id="set-menus43"><option value="1">4:3 (real shape)</option><option value="0">Stretched</option></select></div>
     <div class="row"><div><b>Internal resolution</b><small>How sharp the 3D is drawn. Higher costs GPU time.</small></div>
@@ -267,6 +268,16 @@
       <div class="btns"><button id="data-pick-remaster">Load ISO</button><button id="data-del-remaster">Delete</button></div></div>
     <div class="row"><div><b>Where it lives</b><small id="data-storage">Your disc is copied into this browser's private storage once, so you only pick it the first time. It never leaves your device.</small></div></div>
     <input id="iso-file" type="file" accept=".iso,application/octet-stream" hidden>
+  </section>
+  <section id="tab-online" hidden>
+    <div class="prose"><h3>Online v0.01</h3>Cruise the Wangan with friends. One of you runs <b>tfatftd.xyz server</b> on their PC (the .bat in the Claude folder); everybody connects here, loads Career Mode and drives out onto the Wangan. Other players show up as ghost cars (you drive through them). If you are on a touge, in a race or in a garage, you are solo and the others keep cruising.</div>
+    <div class="row"><div><b>Server</b><small>On the PC running the server: ws://localhost:8787. Friends: the wss:// address the server window shows.</small></div>
+      <input id="set-netserver" type="text" spellcheck="false" style="min-width:260px"></div>
+    <div class="row"><div><b>Your name</b><small>What other players see.</small></div>
+      <input id="set-netname" type="text" maxlength="16" spellcheck="false"></div>
+    <div class="row"><div><b>Status</b><small id="net-status">Not connected.</small></div>
+      <div class="btns"><button id="net-connect" type="button">Connect</button></div></div>
+    <div class="row"><div><b>Players</b><small id="net-players">Nobody else yet.</small></div></div>
   </section>
   <section id="tab-about" hidden>
     <div class="prose"><h3>About</h3>The Fast and the Furious: Tokyo Drift (PS2, 2006) running in your browser. It is not an emulator: the game's PS2 code was
@@ -370,9 +381,11 @@ const params = new URLSearchParams(location.search);
 // ===== TokyoDriftWeb settings (saved in this browser, applied when you press Play) =====
 const SETTINGS_KEY = 'tdweb-settings';
 const PHONE = matchMedia('(pointer: coarse)').matches;
-const DEFAULTS = { disc: 'original', aspect: 'auto', scale: PHONE ? '1' : '2', fullscreen: PHONE ? '1' : '0', aa: '0', stats: '1', hd: PHONE ? '0' : '1', shake: '0', haze: '0', blur: '1', bloom: '1', sky: '1', hud: '1', menus43: '1', touch: 'auto', cam: '1', skip: '1' };
+const DEFAULTS = { disc: 'original', aspect: 'auto', scale: PHONE ? '1' : '2', fullscreen: PHONE ? '1' : '0', aa: '0', stats: '1', hd: PHONE ? '0' : '1', shake: '0', haze: '0', blur: '1', bloom: '1', sky: '1', hud: '0', menus43: '1', touch: 'auto', cam: '1', skip: '1', netserver: 'ws://localhost:8787', netname: '' };
+// v2.2: the old edge-anchored HUD mode ('1') broke the pause menu; anyone who had it goes back to stretched
 let settings = { ...DEFAULTS };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) {}
+if (settings.hud === '1') settings.hud = '0';
 function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {} }
 const ASPECTS = { '4:3': [4, 3], '16:9': [16, 9], '21:9': [64, 27], '32:9': [32, 9] };
 function resolveAspect(value) {
@@ -643,7 +656,7 @@ function applyVideo() {
   // bit 0 edge AA; bits 8+ switch off game post-effects (1 green haze, 2 bloom, 4 motion blur)
   const fx = settings.bloom === '1' ? 0 : 1;
   // bit 30 = stretch the HUD (off = fitted), bit 29 = stretch menus (off = 4:3 with black sides)
-  const wide = (settings.hud === '0' ? 1 << 30 : 0) | (settings.menus43 === '0' ? 1 << 29 : 0);
+  const wide = (settings.hud !== '2' ? 1 << 30 : 0) | (settings.menus43 === '0' ? 1 << 29 : 0);
   if (Module._ps2web_video_options) Module._ps2web_video_options(((aa ? 1 : 0) | (fx << 8) | (fxDebug << 16) | wide) >>> 0);
 }
 aaInput.addEventListener('change', () => {
@@ -1586,6 +1599,7 @@ var Module = {
   ps2CardSaved: () => storeCard(() => TDSaves.autoBackupCard()),
   onFrame: () => {
     pollInput();
+    if (typeof TDNet !== 'undefined') { try { TDNet.tick(); } catch (e) { if (!window.__netErr) { window.__netErr = 1; console.warn('online:', e); } } }
     ++frames;
     fresh = true;
     const now = performance.now();
@@ -2019,6 +2033,183 @@ if (guestRoom) {
   start.textContent = 'Join room ' + guestRoom;
   statusEl.textContent = 'Invited to room ' + guestRoom;
 }
+
+// ===== Online v0.01: share car positions through the player-run relay server =====
+// Engine side (host/web.cpp + runtime/src/mp.cpp):
+//   _ps2web_mp_local(ptr)  -> 1 if the local car is known; fills pos[3] rot[9] vel[3] world
+//   _ps2web_mp_remote(slot, ptr, present)  shows remote player `slot` (0..6) as a ghost car at that pose
+const TDNet = (() => {
+  const $ = (id) => document.getElementById(id);
+  const SLOTS = 7, SEND_MS = 66, DELAY_MS = 120, STALE_MS = 3000;
+  let ws = null, want = false, retryTimer = 0, lastSend = 0, local = 0, remote = 0, myWorld = -1, lastList = 0;
+  const players = new Map();   // id -> { name, world, snaps: [{ t, p, r, v }], seen, slot }
+  const slotOwner = new Array(SLOTS).fill(0);
+  const status = (t) => { const el = $('net-status'); if (el) el.textContent = t; };
+  const worldName = (w) => w < 0 ? 'not driving' : w === 1 ? 'Wangan' : 'somewhere else';
+  function myName() { return (settings.netname || '').trim() || 'Player'; }
+  function connect() {
+    want = true;
+    clearTimeout(retryTimer);
+    let url = (settings.netserver || '').trim();
+    if (!url) { status('Type the server address first.'); return; }
+    if (!/^wss?:\/\//.test(url)) url = (/^(localhost|127\.)/.test(url) ? 'ws://' : 'wss://') + url;
+    url = url.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
+    status('Connecting to ' + url + '...');
+    try { ws = new WebSocket(url); } catch (e) { status('Bad address: ' + e.message); want = false; refreshButton(); return; }
+    ws.onopen = () => { status('Connected as ' + myName() + '. Load Career Mode and drive onto the Wangan.'); refreshButton(); };
+    ws.onmessage = (e) => { try { receive(JSON.parse(e.data)); } catch (err) {} };
+    ws.onclose = () => {
+      ws = null;
+      for (const id of [...players.keys()]) drop(id);
+      refreshButton();
+      if (want) { status('Lost the server, trying again in 3 s...'); retryTimer = setTimeout(connect, 3000); }
+      else status('Not connected.');
+    };
+    refreshButton();
+  }
+  function disconnect() { want = false; clearTimeout(retryTimer); if (ws) ws.close(); status('Not connected.'); refreshButton(); }
+  function refreshButton() { const b = $('net-connect'); if (b) b.textContent = want ? 'Disconnect' : 'Connect'; }
+  function drop(id) {
+    const p = players.get(id);
+    if (p && p.slot >= 0) { slotOwner[p.slot] = 0; if (Module._ps2web_mp_remote) Module._ps2web_mp_remote(p.slot, 0, 0); }
+    players.delete(id);
+  }
+  function receive(m) {
+    if (m.t === 'bye') { drop(m.id); return; }
+    if (m.t !== 'pose' || !Array.isArray(m.p) || m.p.length !== 3) return;
+    let p = players.get(m.id);
+    if (!p) { p = { name: '', world: -1, snaps: [], seen: 0, slot: -1 }; players.set(m.id, p); }
+    const now = performance.now();
+    p.name = String(m.n || 'Player').slice(0, 16); p.world = +m.w; p.seen = now;
+    p.snaps.push({ t: now, p: m.p, r: m.r, v: m.v || [0, 0, 0] });
+    if (p.snaps.length > 6) p.snaps.shift();
+  }
+  // pose at time t: between the two snapshots around it, or carried forward on velocity for a moment
+  function sample(snaps, t) {
+    let a = snaps[0], b = null;
+    for (let i = 1; i < snaps.length; i++) { if (snaps[i].t <= t) a = snaps[i]; else { b = snaps[i]; break; } }
+    if (!b) {
+      const dt = Math.min(0.25, Math.max(0, (t - a.t) / 1000));
+      return { p: a.p.map((x, k) => x + a.v[k] * dt), r: a.r, v: a.v };
+    }
+    const f = Math.min(1, Math.max(0, (t - a.t) / Math.max(1, b.t - a.t)));
+    const lerp = (x, y) => x.map((v, k) => v + (y[k] - v) * f);
+    return { p: lerp(a.p, b.p), r: orth(lerp(a.r, b.r)), v: lerp(a.v, b.v) };
+  }
+  function orth(r) {  // rows right, up, forward: keep them unit length and square after blending
+    const n = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return v.map((x) => x / l); };
+    const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const fw = n(r.slice(6, 9)), up0 = n(r.slice(3, 6));
+    const right = n(cross(up0, fw)), up = cross(fw, right);
+    return [...right, ...up, ...fw];
+  }
+  // ---- ghost cars: drawn over the game picture with the game's own camera ----
+  // Lens measured in free roam (wheels + roof of the player's car): tan(half FOV) 0.743 across at 4:3,
+  // 0.4126 up/down; the widescreen patch widens "across" by 1 / k, k = (4/3) / aspect.
+  const TAN_X43 = 0.743, TAN_Y = 0.4126;
+  let overlay = null, octx = null, cam = 0;
+  function ensureOverlay() {
+    if (overlay) return;
+    overlay = document.createElement('canvas');
+    overlay.id = 'mp-overlay';
+    overlay.style.cssText = 'position:fixed;pointer-events:none;z-index:5;left:0;top:0';
+    document.body.appendChild(overlay);
+    octx = overlay.getContext('2d');
+    cam = Module._malloc(12 * 4);
+  }
+  // the car body: lower box + cabin, in car space (x right, y up, z forward), origin ~0.7 m above the road
+  const BODY = [[-0.9, -0.72, -2.2, 0.9, 0.0, 2.2], [-0.75, 0.0, -1.2, 0.75, 0.55, 0.9]];
+  function drawGhosts(now) {
+    ensureOverlay();
+    const rect = canvas.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+    const W = Math.round(rect.width * dpr), H = Math.round(rect.height * dpr);
+    if (overlay.width !== W || overlay.height !== H) { overlay.width = W; overlay.height = H; }
+    overlay.style.left = rect.left + 'px'; overlay.style.top = rect.top + 'px';
+    overlay.style.width = rect.width + 'px'; overlay.style.height = rect.height + 'px';
+    octx.clearRect(0, 0, W, H);
+    if (myWorld < 0 || !Module._ps2web_mp_camera || Module._ps2web_mp_camera(cam) !== 1) return;
+    const c = new Float32Array(Module.HEAPU8.buffer, cam, 12);
+    const R = [c[0], c[1], c[2]], U = [c[3], c[4], c[5]], F = [c[6], c[7], c[8]], P = [c[9], c[10], c[11]];
+    const [aw, ah] = ASPECTS[aspect] || [4, 3], ratio = aw / ah;
+    const vw = Math.min(W, H * ratio), vh = vw / ratio, ox = (W - vw) / 2, oy = (H - vh) / 2;
+    const tanX = TAN_X43 / Math.min(1, (4 / 3) / ratio);
+    const project = (q) => {
+      const d = [q[0] - P[0], q[1] - P[1], q[2] - P[2]];
+      const z = d[0] * F[0] + d[1] * F[1] + d[2] * F[2];
+      if (z < 0.3) return null;
+      const x = d[0] * R[0] + d[1] * R[1] + d[2] * R[2], y = d[0] * U[0] + d[1] * U[1] + d[2] * U[2];
+      return [ox + (0.5 + 0.5 * (x / z) / tanX) * vw, oy + (0.5 - 0.5 * (y / z) / TAN_Y) * vh, z];
+    };
+    const ghosts = [];
+    for (const p of players.values()) {
+      if (now - p.seen > STALE_MS || p.world !== myWorld || p.world < 1) continue;
+      const s = sample(p.snaps, now - DELAY_MS);
+      const d = Math.hypot(s.p[0] - P[0], s.p[1] - P[1], s.p[2] - P[2]);
+      ghosts.push({ p, s, d });
+    }
+    ghosts.sort((a, b) => b.d - a.d);   // far ones first
+    for (const { p, s, d } of ghosts) {
+      const r = s.r, toWorld = (x, y, z) => [s.p[0] + r[0] * x + r[3] * y + r[6] * z, s.p[1] + r[1] * x + r[4] * y + r[7] * z, s.p[2] + r[2] * x + r[5] * y + r[8] * z];
+      const alpha = d > 400 ? 0.25 : 0.45;
+      if (d < 600) {
+        const faces = [];
+        for (const [x0, y0, z0, x1, y1, z1] of BODY) {
+          const v = [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]].map((q) => project(toWorld(...q)));
+          if (v.some((q) => !q)) continue;
+          for (const f of [[0, 1, 2, 3], [5, 4, 7, 6], [4, 0, 3, 7], [1, 5, 6, 2], [3, 2, 6, 7], [4, 5, 1, 0]]) {
+            const a = v[f[0]], b = v[f[1]], cc = v[f[2]];
+            if ((b[0] - a[0]) * (cc[1] - a[1]) - (b[1] - a[1]) * (cc[0] - a[0]) > 0) continue;   // facing away
+            faces.push({ pts: f.map((i) => v[i]), z: f.reduce((t, i) => t + v[i][2], 0) / 4 });
+          }
+        }
+        faces.sort((a, b) => b.z - a.z);
+        for (const f of faces) {
+          octx.beginPath(); f.pts.forEach((q, i) => (i ? octx.lineTo(q[0], q[1]) : octx.moveTo(q[0], q[1]))); octx.closePath();
+          octx.fillStyle = 'rgba(80,220,255,' + alpha * 0.55 + ')'; octx.fill();
+          octx.strokeStyle = 'rgba(160,240,255,' + alpha * 1.6 + ')'; octx.lineWidth = Math.max(1, 1.5 * dpr); octx.stroke();
+        }
+      }
+      // name tag over the roof (or at the screen edge direction if they are behind you)
+      const tag = project(toWorld(0, 1.2, 0));
+      const label = p.name + '  ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km');
+      octx.font = 'bold ' + Math.round(14 * dpr) + 'px system-ui, sans-serif';
+      octx.textAlign = 'center';
+      if (tag) {
+        const tw = octx.measureText(label).width + 12 * dpr;
+        octx.fillStyle = 'rgba(0,0,0,.55)'; octx.fillRect(tag[0] - tw / 2, tag[1] - 20 * dpr, tw, 22 * dpr);
+        octx.fillStyle = '#7fe8ff'; octx.fillText(label, tag[0], tag[1] - 4 * dpr);
+      } else {
+        // behind the camera: small arrow tag at the bottom edge on their side
+        const dx = (s.p[0] - P[0]) * R[0] + (s.p[2] - P[2]) * R[2];
+        const x = dx < 0 ? ox + 60 * dpr : ox + vw - 60 * dpr;
+        octx.fillStyle = 'rgba(0,0,0,.55)'; octx.fillRect(x - 70 * dpr, oy + vh - 34 * dpr, 140 * dpr, 22 * dpr);
+        octx.fillStyle = '#7fe8ff'; octx.fillText((dx < 0 ? '◀ ' : '') + label + (dx < 0 ? '' : ' ▶'), x, oy + vh - 18 * dpr);
+      }
+    }
+  }
+  function tick() {
+    if (!Module.running || !Module._ps2web_mp_local) return;
+    if (!local) { local = Module._malloc(16 * 4); remote = Module._malloc(16 * 4); }
+    const now = performance.now();
+    const f = new Float32Array(Module.HEAPU8.buffer, local, 16);
+    const ok = Module._ps2web_mp_local(local) === 1;
+    myWorld = ok ? f[15] : -1;
+    if (ws && ws.readyState === 1 && now - lastSend >= SEND_MS) {
+      lastSend = now;
+      const r1 = (x) => Math.round(x * 100) / 100, r3 = (x) => Math.round(x * 1000) / 1000;
+      ws.send(JSON.stringify(ok ? { t: 'pose', n: myName(), w: myWorld, p: [f[0], f[1], f[2]].map(r1), r: Array.from(f.subarray(3, 12), r3), v: [f[12], f[13], f[14]].map(r1) }
+                                : { t: 'pose', n: myName(), w: -1, p: [0, 0, 0], r: [1, 0, 0, 0, 1, 0, 0, 0, 1], v: [0, 0, 0] }));
+    }
+    drawGhosts(now);
+    if (now - lastList > 1000) {
+      lastList = now;
+      const el = $('net-players');
+      if (el) el.textContent = players.size ? [...players.values()].map((p) => p.name + ' (' + worldName(p.world) + (p.slot >= 0 ? ', in your world' : '') + ')').join(', ') : 'Nobody else yet.';
+    }
+  }
+  document.getElementById('net-connect').addEventListener('click', () => { if (want) disconnect(); else connect(); });
+  return { tick, connect, disconnect, players };
+})();
 
 // ===== In-game menu: the launcher (all settings, saves, controls, game data) over the paused game =====
 var inGame = false;
