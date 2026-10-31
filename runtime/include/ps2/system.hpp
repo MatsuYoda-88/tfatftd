@@ -144,4 +144,6 @@ std::uint16_t pad_rumble(int pad = 0);
 void set_audio_sink(std::function<void(const std::int16_t *samples, std::size_t frames)> sink);
 
 bool intro_turbo();   // tfatftd: boot fast-forward running (host skips pacing, mutes audio)
+void readback_stats(double out[4]);   // GPU readbacks: waited, background, bytes, ms waited
+void readback_log();
 }

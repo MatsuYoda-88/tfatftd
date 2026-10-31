@@ -181,6 +181,17 @@ void vblank() {
     apply_presses();
     apply_patches(false);
     mp::online_debug_log();
+    readback_log();
+    // PS2_WATCH=addr,words,every: print that many floats from game memory every N frames (reverse engineering aid)
+    if (static const char *w = std::getenv("PS2_WATCH"); w) {
+        static unsigned addr = 0, words = 0, every = 0;
+        if (!every && std::sscanf(w, "%x,%u,%u", &addr, &words, &every) != 3) every = ~0u;
+        if (every && every != ~0u && g_frames % every == 0) {
+            std::fprintf(stderr, "[watch] %llu:", static_cast<unsigned long long>(g_frames));
+            for (unsigned i = 0; i < words; ++i) { const std::uint32_t u = ld32(addr + i * 4); float f; std::memcpy(&f, &u, 4); std::fprintf(stderr, " %.3g", f); }
+            std::fprintf(stderr, "\n");
+        }
+    }
     if (g_options.on_vblank) g_options.on_vblank();
     iop::sio2::flush_cards();
     if (g_options.trace_iop_modules && g_frames % 25 == 0) std::fprintf(stderr, "[frame] %llu prims %llu\n", static_cast<unsigned long long>(g_frames), static_cast<unsigned long long>(gs::primitives_drawn()));

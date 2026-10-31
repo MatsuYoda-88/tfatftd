@@ -955,7 +955,8 @@ ProgramFn lookup(std::uint32_t address) {
     g_last_key = key;
     e.key = key;
     const auto it = g_programs.find(key);
-    e.function = it == g_programs.end() ? nullptr : it->second;
+    const bool missing = it == g_programs.end();
+    e.function = missing ? nullptr : it->second;
     e.jit = nullptr;
     const int jit_mode = jit::mode();
     if (jit_mode == 2 || (jit_mode >= 1 && !e.function)) e.function = jit_program(key, address);
@@ -967,14 +968,18 @@ ProgramFn lookup(std::uint32_t address) {
     if (e.candidates.size() < 8) e.candidates.push_back(std::move(c));
     else e.candidates[e.next++ % 8] = std::move(c);
     static const char *record = std::getenv("PS2_VU_RECORD");
-    if (!e.function && (record || g_options.on_vu_program)) {
+    // a program the build does not have (even if the web JIT just compiled it): hand it to the host once,
+    // so it can be baked into the next build
+    if (missing && g_options.on_vu_program) {
         char name[64];
         std::snprintf(name, sizeof name, "%016llX_%04X.bin", static_cast<unsigned long long>(key), address & 16383u);
-        if (g_options.on_vu_program) {
-            static std::unordered_set<std::string> reported;
-            if (reported.insert(name).second) g_options.on_vu_program(name, g_vu1_code, 16384);
-            return e.function;
-        }
+        static std::unordered_set<std::string> reported;
+        if (reported.insert(name).second) g_options.on_vu_program(name, g_vu1_code, 16384);
+        return e.function;
+    }
+    if (!e.function && record) {
+        char name[64];
+        std::snprintf(name, sizeof name, "%016llX_%04X.bin", static_cast<unsigned long long>(key), address & 16383u);
         const std::filesystem::path path = std::filesystem::path(record) / name;
         if (!std::filesystem::exists(path)) {
             std::filesystem::create_directories(record);

@@ -1815,3 +1815,30 @@ bool gs::present_as_43() {
 }
 
 }
+
+namespace ps2 {
+// GPU -> game memory readbacks: sync count, async count, bytes, ms waited (zeros without the GPU renderer)
+void readback_stats(double out[4]) {
+    out[0] = out[1] = out[2] = out[3] = 0;
+#ifdef PS2_GPU
+    gs::gpu::download_stats(out);
+#endif
+}
+// PS2_DL_LOG: once a second, readbacks and wall time per frame (native test runs)
+void readback_log() {
+    static const bool on = std::getenv("PS2_DL_LOG") != nullptr;
+    if (!on) return;
+    static std::uint64_t n = 0;
+    static double last[4] = {};
+    static auto t0 = std::chrono::steady_clock::now();
+    if (++n % 60) return;
+    double now[4];
+    readback_stats(now);
+    const auto t = std::chrono::steady_clock::now();
+    const double ms = std::chrono::duration<double, std::milli>(t - t0).count() / 60.0;
+    t0 = t;
+    std::fprintf(stderr, "[perf] frame %llu: %.1f ms/frame, readbacks %0.f waited + %0.f background, %.1f MB, %.1f ms waiting\n",
+                 static_cast<unsigned long long>(n), ms, now[0] - last[0], now[1] - last[1], (now[2] - last[2]) / 1048576.0, now[3] - last[3]);
+    for (int i = 0; i < 4; ++i) last[i] = now[i];
+}
+}

@@ -58,16 +58,21 @@ EM_JS(void, ps2web_fetch, (const char *url, double offset, int size, void *out, 
         });
 });
 
-EM_JS(int, ps2web_save_program, (const char *name, const std::uint8_t *code, int size), {
-    try {
-        const xhr = new XMLHttpRequest();
-        xhr.open('PUT', 'vu1/' + UTF8ToString(name), false);
-        xhr.send(HEAPU8.slice(code, code + size));
-        return xhr.status;
-    } catch (e) {
-        return 0;
-    }
-});
+// A VU1 program the build lacks: keep a copy on the page (main thread) for the performance report,
+// so it can be baked into the next build. No network, no waiting.
+int ps2web_save_program(const char *name, const std::uint8_t *code, int size) {
+    return MAIN_THREAD_EM_ASM_INT({
+        try {
+            const list = Module.newVuPrograms || (Module.newVuPrograms = []);
+            if (list.length >= 100) return 201;
+            const bytes = HEAPU8.slice($1, $1 + $2);
+            let bin = '';
+            for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+            list.push({ name: UTF8ToString($0), data: btoa(bin) });
+            return 201;
+        } catch (e) { return 0; }
+    }, name, code, size);
+}
 
 EM_JS(double, ps2web_disc_size, (), { return Module.discSize || 0; });
 EM_JS(char *, ps2web_state_url, (), { return Module.stateUrl ? stringToNewUTF8(new URL(Module.stateUrl, location.href).href) : 0; });
@@ -395,6 +400,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ps2web_mp_remote(int slot, const float *in,
     if (present && in) { std::memcpy(p.pos, in, 12); std::memcpy(p.rot, in + 3, 36); std::memcpy(p.vel, in + 12, 12); }
     ps2::mp::set_remote(slot, p, present && in);
 }
+extern "C" EMSCRIPTEN_KEEPALIVE void ps2web_readbacks(double *out) { ps2::readback_stats(out); }
 extern "C" EMSCRIPTEN_KEEPALIVE void ps2web_pause(int on) { g_paused.store(on ? 1 : 0); }
 extern "C" EMSCRIPTEN_KEEPALIVE void ps2web_video_options(int flags) { ps2::set_video_options(static_cast<std::uint32_t>(flags)); }
 
@@ -458,7 +464,7 @@ int main(int argc, char **argv) {
         static bool unsupported = false;
         if (unsupported) return;
         const int status = ps2web_save_program(name.c_str(), code, static_cast<int>(size));
-        if (status == 200 || status == 201) std::fprintf(stderr, "[web] saved VU1 program %s\n", name.c_str());
+        if (status == 200 || status == 201) std::fprintf(stderr, "[web] new VU1 program %s kept for the performance report\n", name.c_str());
         else unsupported = true;
     };
     if (!EM_ASM_INT({ return Module.noCard ? 1 : 0; })) {

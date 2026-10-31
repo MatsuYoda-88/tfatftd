@@ -205,12 +205,12 @@
   <section id="tab-settings">
     <div class="row"><div><b>Disc</b><small>Which ISO to play. The Remaster has your handling mods; both use the same recompiled game.</small></div>
       <select id="set-disc"><option value="original">Original (SLUS-21449)</option><option value="remaster">Remaster v1.0</option></select></div>
-    <div class="row"><div><b>Skip intros</b><small>Boots straight to PRESS START: no logos, intro movie or the long car-maker credit screens. Applies the next time the game starts.</small></div>
+    <div class="row" hidden style="display:none"><div><b>Skip intros</b><small>Boots straight to PRESS START: no logos, intro movie or the long car-maker credit screens. Applies the next time the game starts.</small></div>
       <select id="set-skip"><option value="1">On</option><option value="0">Off (original)</option></select></div>
     <div class="row"><div><b>Aspect ratio</b><small>Widens the game's field of view (no stretching) and the picture. Auto matches your screen.</small></div>
       <select id="set-aspect"><option value="auto">Auto</option><option value="4:3">4:3 (original)</option><option value="16:9">16:9</option><option value="21:9">21:9</option><option value="32:9">32:9 super ultrawide</option></select></div>
     <div class="row"><div><b>HUD &amp; text shape</b><small>Widescreen only. Centered (beta) = the HUD, pause menu and text keep their real shape as one 4:3 picture in the middle of the screen. Stretched = how the game draws it, spread across the whole width.</small></div>
-      <select id="set-hud"><option value="0">Stretched</option><option value="2">Centered 4:3 (beta)</option></select></div>
+      <select id="set-hud"><option value="0">Stretched</option><option value="2">Centered 4:3: HUD + menus</option></select></div>
     <div class="row"><div><b>Menus</b><small>Widescreen only. 4:3 shows menus, loading screens and movies at their real shape with dark sides.</small></div>
       <select id="set-menus43"><option value="0">Stretched</option><option value="1">4:3 (real shape)</option></select></div>
     <div class="row"><div><b>Internal resolution</b><small>How sharp the 3D is drawn. Higher costs GPU time.</small></div>
@@ -236,6 +236,8 @@
     <div class="row"><div><b>Performance stats</b><small>fps, GPU and audio buffer in the bottom bar.</small></div>
       <select id="set-stats"><option value="1">Show</option><option value="0">Hide</option></select></div>
     <div class="row"><div><b>Reset</b><small>Put every setting back to default.</small></div><div class="btns"><button id="set-reset">Reset all settings</button></div></div>
+      <div class="row"><div><b>Performance report</b><small>Play for a while (it records the last 15 minutes), then press this or Ctrl+Alt+P. It saves a small text file to your Downloads that shows exactly when and why the game slowed down.</small></div>
+      <div class="btns"><button id="perf-save" type="button">Save performance report</button></div></div>
   </section>
   <section id="tab-saves" hidden>
     <div class="row"><div><b>Save key</b><small id="key-status">No key on this browser.</small></div>
@@ -387,6 +389,7 @@ let settings = { ...DEFAULTS };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) {}
 if (settings.hud === '1') settings.hud = '0';
 // v2.3: 4:3 menus flickered on menus with a 3D car behind them; everyone starts on stretched (opt back in any time)
+settings.skip = '0';   // skip intros is hidden until it is fixed
 if (!settings.v23) { settings.menus43 = '0'; settings.v23 = 1; try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {} }
 function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {} }
 const ASPECTS = { '4:3': [4, 3], '16:9': [16, 9], '21:9': [64, 27], '32:9': [32, 9] };
@@ -658,7 +661,7 @@ function applyVideo() {
   // bit 0 edge AA; bits 8+ switch off game post-effects (1 green haze, 2 bloom, 4 motion blur)
   const fx = settings.bloom === '1' ? 0 : 1;
   // bit 30 = stretch the HUD (off = fitted), bit 29 = stretch menus (off = 4:3 with black sides)
-  const wide = (settings.hud !== '2' ? 1 << 30 : 0) | (settings.menus43 === '0' ? 1 << 29 : 0);
+  const wide = (settings.hud !== '2' ? 1 << 30 : 0) | (settings.menus43 === '0' && settings.hud !== '2' ? 1 << 29 : 0);
   if (Module._ps2web_video_options) Module._ps2web_video_options(((aa ? 1 : 0) | (fx << 8) | (fxDebug << 16) | wide) >>> 0);
 }
 aaInput.addEventListener('change', () => {
@@ -1600,6 +1603,7 @@ var Module = {
   audioQueuedMs: () => Module._ps2web_audio_queued_ms(),
   ps2CardSaved: () => storeCard(() => TDSaves.autoBackupCard()),
   onFrame: () => {
+    TDPerf.frame();
     pollInput();
     if (typeof TDNet !== 'undefined') { try { TDNet.tick(); } catch (e) { if (!window.__netErr) { window.__netErr = 1; console.warn('online:', e); } } }
     ++frames;
@@ -1618,6 +1622,12 @@ var Module = {
                             '%   heap ' + memory + ' MB   audio ' + Module.audioQueuedMs().toFixed(0) + ' ms' +
                             (interpreted > lastInterpreted ? '   vu1 interpreted ' + Math.round((interpreted - lastInterpreted) * 1000 / span) + '/s' : '') +
                             (hd && Module.hdNames ? '   HD ' + hd.loaded + (hd.pending ? ' (+' + hd.pending + ')' : '') : '');
+      TDPerf.second({
+        fps: frames * 1000 / span, shown: shown * 1000 / span, gpu: (gpu - lastGpu) / span * 100,
+        emuIdle: (emuIdle - lastEmuIdle) / span * 100, vuIdle: (vuIdle - lastVuIdle) / span * 100, gsIdle: (renderIdle - lastRenderIdle) / span * 100,
+        vuInterp: (interpreted - lastInterpreted) * 1000 / span, heap: +memory, audio: Module.audioQueuedMs(),
+        hdLoaded: hd ? hd.loaded : 0, hdPending: hd ? hd.pending : 0, frame: Module._ps2web_frames(),
+      });
       lastInterpreted = interpreted;
       lastEmuIdle = emuIdle;
       lastRenderIdle = renderIdle;
@@ -1630,6 +1640,70 @@ var Module = {
   },
   noInitialRun: true,
 };
+
+// ===== Performance recorder: one line per second (last 15 min) + every hitch, saved as a report =====
+// Ctrl+Alt+P or Settings > Save performance report. Columns are explained at the top of the file.
+const TDPerf = (() => {
+  const rows = [], hitches = [];
+  let lastT = 0, worst = 0, slow = 0, lastHd = 0, started = Date.now();
+  function frame() {
+    const t = performance.now();
+    if (lastT) {
+      const gap = t - lastT;
+      if (gap > worst) worst = gap;
+      if (gap > 25) { slow++; if (hitches.length < 2000) hitches.push([Math.round((Date.now() - started) / 100) / 10, Math.round(gap)]); }
+    }
+    lastT = t;
+  }
+  let rb = 0, lastRb = [0, 0, 0, 0];
+  function second(s) {
+    s.t = Math.round((Date.now() - started) / 1000);
+    if (Module._ps2web_readbacks) {
+      if (!rb) rb = Module._malloc(32);
+      Module._ps2web_readbacks(rb);
+      const now = Array.from(new Float64Array(Module.HEAPU8.buffer, rb, 4));
+      s.rbWait = now[0] - lastRb[0]; s.rbBg = now[1] - lastRb[1]; s.rbMB = (now[2] - lastRb[2]) / 1048576; s.rbMs = now[3] - lastRb[3];
+      lastRb = now;
+    }
+    s.worst = Math.round(worst); s.slow = slow;
+    s.hdNew = s.hdLoaded - lastHd; lastHd = s.hdLoaded;
+    worst = 0; slow = 0;
+    rows.push(s);
+    if (rows.length > 900) rows.shift();
+  }
+  function report() {
+    const f = (x, d = 0) => (typeof x === 'number' && isFinite(x) ? x.toFixed(d) : '-');
+    const lines = [];
+    lines.push('tfatftd.xyz performance report  ' + new Date().toString());
+    lines.push('gpu: ' + (Module.gpuInfo || '?') + '   screen: ' + screen.width + 'x' + screen.height + ' @' + devicePixelRatio + 'x   window: ' + innerWidth + 'x' + innerHeight);
+    lines.push('browser: ' + navigator.userAgent);
+    lines.push('settings: ' + JSON.stringify(settings));
+    lines.push('status: ' + statusEl.textContent);
+    const bad = rows.filter((r) => r.fps < 58 || r.worst > 40);
+    lines.push('seconds recorded: ' + rows.length + '   seconds under 58 fps or with a >40 ms frame: ' + bad.length + '   hitches (>25 ms frames): ' + hitches.length);
+    lines.push('');
+    lines.push('cols: t(s) frame fps onscreen worst_ms slow_frames gpu% idle_emu% idle_vu% idle_gs% vu1_interp/s hd_new hd_pending heap_MB audio_ms readbacks_waited readbacks_bg readback_MB readback_wait_ms');
+    for (const r of rows) lines.push([r.t, r.frame, f(r.fps, 1), f(r.shown, 0), r.worst, r.slow, f(r.gpu), f(r.emuIdle), f(r.vuIdle), f(r.gsIdle), f(r.vuInterp), r.hdNew, r.hdPending, r.heap, f(r.audio), f(r.rbWait), f(r.rbBg), f(r.rbMB, 1), f(r.rbMs, 1)].join(' '));
+    lines.push('');
+    lines.push('hitches: [time s, frame gap ms]');
+    lines.push(hitches.map((h) => h[0] + ':' + h[1]).join(' '));
+    const vu = Module.newVuPrograms || [];
+    lines.push('');
+    lines.push('new vu1 programs (compiled on the spot this session): ' + vu.length);
+    for (const p of vu) lines.push('vu1 ' + p.name + ' ' + p.data);
+    return lines.join('\n');
+  }
+  function save() {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([report()], { type: 'text/plain' }));
+    a.download = 'tfatftd-perf-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.txt';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    if (typeof note === 'function') note('Performance report saved to your Downloads folder');
+  }
+  window.addEventListener('keydown', (e) => { if (e.ctrlKey && e.altKey && e.code === 'KeyP') { e.preventDefault(); save(); } }, true);
+  return { frame, second, report, save };
+})();
 
 // ===== Encrypted saves: AES-256-GCM with a key the player downloads =====
 // File layout: "TDS1" | key id (4 bytes) | IV (12 bytes) | ciphertext+tag. Name inside is authenticated as extra data.
@@ -2239,6 +2313,7 @@ document.getElementById('restart-now').addEventListener('click', () => {
   if (confirm('Restart the game now to apply the changes? Anything since your last save is lost.')) location.reload();
 });
 document.getElementById('game-settings').addEventListener('click', () => openGameMenu());
+document.getElementById('perf-save').addEventListener('click', () => TDPerf.save());
 window.addEventListener('keydown', (e) => {
   if (!inGame) return;
   if (e.code === 'F1') { e.preventDefault(); e.stopImmediatePropagation(); toggleGameMenu(); }

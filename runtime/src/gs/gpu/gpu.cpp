@@ -1,3 +1,5 @@
+#include <atomic>
+#include <chrono>
 #include "gpu.hpp"
 #include "ps2/system.hpp"
 #include "ps2/video.hpp"
@@ -1593,7 +1595,15 @@ void collect_download() {
     g_pending.busy = g_pending.ready = false;
 }
 
+// readback counters (perf report / PS2_DL_LOG): GPU -> game memory copies the game waits on
+std::atomic<std::uint64_t> g_dl_sync{0}, g_dl_async{0}, g_dl_bytes{0}, g_dl_us{0};
+void download_stats(double out[4]) {
+    out[0] = static_cast<double>(g_dl_sync.load()); out[1] = static_cast<double>(g_dl_async.load());
+    out[2] = static_cast<double>(g_dl_bytes.load()); out[3] = static_cast<double>(g_dl_us.load()) / 1000.0;
+}
 bool download_async(std::uint8_t *memory, std::uint32_t offset, std::uint32_t bytes, std::uint32_t serial) {
+    g_dl_async.fetch_add(1, std::memory_order_relaxed);
+    g_dl_bytes.fetch_add(bytes, std::memory_order_relaxed);
     collect_download();
     if (g_pending.busy) return false;
     if (g_pending.capacity < bytes) {
@@ -1627,13 +1637,19 @@ bool download_async(std::uint8_t *memory, std::uint32_t offset, std::uint32_t by
 
 bool finish_download(std::uint32_t serial) {
     if (!g_pending.busy || g_pending.serial != serial) return false;
+    const auto t0 = std::chrono::steady_clock::now();
     while (g_pending.busy && !g_pending.ready) pump();
+    g_dl_us.fetch_add(static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count()), std::memory_order_relaxed);
     const bool done = g_pending.ready;
     collect_download();
     return done;
 }
 
 void download(std::uint8_t *memory, std::uint32_t offset, std::uint32_t bytes) {
+    g_dl_sync.fetch_add(1, std::memory_order_relaxed);
+    g_dl_bytes.fetch_add(bytes, std::memory_order_relaxed);
+    struct Timer { std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+        ~Timer() { g_dl_us.fetch_add(static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count()), std::memory_order_relaxed); } } timer;
     flush_all();
     if (g_sx * g_sy == 1) {
         submit();
