@@ -1805,8 +1805,10 @@ bool gs::present_as_43() {
     if (gs::g_3d_draws.exchange(0, std::memory_order_relaxed) > 300 || composite) { deep++; flat = 0; }
     else { flat++; deep = 0; }
     const bool was = as43;
-    if (!as43 && flat >= 8) as43 = true;
-    if (as43 && deep >= 2) as43 = false;
+    // slow, sticky switch: menus with a moving 3D car behind them made the old 8 / 2 frame thresholds flip
+    // back and forth every few frames; now it takes ~1.5 s of steady 2D to go 4:3 and ~0.75 s of 3D to go wide
+    if (!as43 && flat >= 90) as43 = true;
+    if (as43 && deep >= 45) as43 = false;
     static const bool log43 = std::getenv("PS2_LOG_43") != nullptr;
     if (log43 && was != as43) std::fprintf(stderr, "[43] frame %llu -> %s\n", calls, as43 ? "4:3" : "wide");
     return as43;

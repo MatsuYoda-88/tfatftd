@@ -107,7 +107,11 @@ bool read_car(std::uint32_t car, Pose &out) {
 
 // Debug: PS2_MP_FOLLOW=car,leader,ahead,side makes car mirror leader's pose, offset (a stand-in for network data).
 // Debug: PS2_MP_TEST=car,x,y,z parks that car's picture at a fixed spot (heading kept) to prove puppets work.
+namespace { void online_hooks(); }
 void debug_init() {
+    // called from boot() on the game thread: the only safe place to add hooks
+    install();
+    online_hooks();
     if (const char *f = std::getenv("PS2_MP_FOLLOW")) {
         unsigned car = 0, lead = 0;
         if (std::sscanf(f, "%x,%x,%f,%f", &car, &lead, &g_follow_ahead, &g_follow_side) == 4) {
@@ -173,7 +177,6 @@ bool camera_pose(float out[12]) {
 void online_debug_log() {
     static const bool on = std::getenv("PS2_MP_LOG") != nullptr;
     if (!on) return;
-    online_hooks();
     if (ps2::frames_run() % 60) return;
     Pose p; int w = 0;
     const bool ok = local_pose(p, w);
@@ -186,8 +189,6 @@ void online_debug_log() {
 }
 
 bool local_pose(Pose &out, int &world) {
-    online_hooks();
-    install();
     const std::uint32_t car = local_car();
     if (!car || !read_car(car, out)) return false;
     // velocity from the physics body (mover at +0xF0, body at mover+0x28, velocity at body+0x30)
@@ -199,7 +200,6 @@ bool local_pose(Pose &out, int &world) {
 
 void set_remote(int slot, const Pose &pose, bool present) {
     if (slot < 0 || slot >= kSlots) return;
-    install();
     std::lock_guard lock(g_lock);
     Slot &s = g_slots[slot];
     s.want = present;

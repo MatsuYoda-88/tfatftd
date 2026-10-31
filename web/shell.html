@@ -212,7 +212,7 @@
     <div class="row"><div><b>HUD &amp; text shape</b><small>Widescreen only. Centered (beta) = the HUD, pause menu and text keep their real shape as one 4:3 picture in the middle of the screen. Stretched = how the game draws it, spread across the whole width.</small></div>
       <select id="set-hud"><option value="0">Stretched</option><option value="2">Centered 4:3 (beta)</option></select></div>
     <div class="row"><div><b>Menus</b><small>Widescreen only. 4:3 shows menus, loading screens and movies at their real shape with dark sides.</small></div>
-      <select id="set-menus43"><option value="1">4:3 (real shape)</option><option value="0">Stretched</option></select></div>
+      <select id="set-menus43"><option value="0">Stretched</option><option value="1">4:3 (real shape)</option></select></div>
     <div class="row"><div><b>Internal resolution</b><small>How sharp the 3D is drawn. Higher costs GPU time.</small></div>
       <select id="set-scale"><option value="1">1× (640×448) - native</option><option value="2">2× (1280×896)</option><option value="3">3× (1920×1344) - 1080p</option><option value="4">4× (2560×1792) - 1440p</option><option value="5">5× (3200×2240) - 4K</option><option value="6">6× (3840×2688)</option><option value="8">8× (5120×3584) - 5K</option><option value="10">10× (6400×4480) - 8K</option></select></div>
     <div class="row"><div><b>Display</b><small id="refresh-note">Measuring refresh rate…</small></div>
@@ -381,11 +381,13 @@ const params = new URLSearchParams(location.search);
 // ===== TokyoDriftWeb settings (saved in this browser, applied when you press Play) =====
 const SETTINGS_KEY = 'tdweb-settings';
 const PHONE = matchMedia('(pointer: coarse)').matches;
-const DEFAULTS = { disc: 'original', aspect: 'auto', scale: PHONE ? '1' : '2', fullscreen: PHONE ? '1' : '0', aa: '0', stats: '1', hd: PHONE ? '0' : '1', shake: '0', haze: '0', blur: '1', bloom: '1', sky: '1', hud: '0', menus43: '1', touch: 'auto', cam: '1', skip: '1', netserver: 'ws://localhost:8787', netname: '' };
+const DEFAULTS = { disc: 'original', aspect: 'auto', scale: PHONE ? '1' : '2', fullscreen: PHONE ? '1' : '0', aa: '0', stats: '1', hd: PHONE ? '0' : '1', shake: '0', haze: '0', blur: '1', bloom: '1', sky: '1', hud: '0', menus43: '0', touch: 'auto', cam: '1', skip: '1', netserver: 'ws://localhost:8787', netname: '' };
 // v2.2: the old edge-anchored HUD mode ('1') broke the pause menu; anyone who had it goes back to stretched
 let settings = { ...DEFAULTS };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) {}
 if (settings.hud === '1') settings.hud = '0';
+// v2.3: 4:3 menus flickered on menus with a 3D car behind them; everyone starts on stretched (opt back in any time)
+if (!settings.v23) { settings.menus43 = '0'; settings.v23 = 1; try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {} }
 function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {} }
 const ASPECTS = { '4:3': [4, 3], '16:9': [16, 9], '21:9': [64, 27], '32:9': [32, 9] };
 function resolveAspect(value) {
@@ -2112,7 +2114,7 @@ const TDNet = (() => {
     if (overlay) return;
     overlay = document.createElement('canvas');
     overlay.id = 'mp-overlay';
-    overlay.style.cssText = 'position:fixed;pointer-events:none;z-index:5;left:0;top:0';
+    overlay.style.cssText = 'position:fixed;pointer-events:none;z-index:5;left:0;top:0;background:transparent';
     document.body.appendChild(overlay);
     octx = overlay.getContext('2d');
     cam = Module._malloc(12 * 4);
