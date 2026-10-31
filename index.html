@@ -43,7 +43,7 @@
     const hex = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (b) => b.toString(16).padStart(2, '0')).join('');
     if (hex !== HASH) { $('tb-msg').textContent = 'Wrong password'; $('tb-pass').select(); return; }
     try { localStorage.setItem('tdtest-ok', '1'); } catch (e) {}
-    location.href = '/test/';
+    location.href = '/lab/';
   }
   $('tb-go').addEventListener('click', go);
   $('tb-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); go(); } });
