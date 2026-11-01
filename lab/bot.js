@@ -40,25 +40,44 @@
 })();
 // captured search reply payload (166 B) from a real host named PLAYER
 window.BOT_SEARCH_REPLY = '0000ff01000004009200000040313810050000000000100001000000504c41594552000000000000000000000000000000000000000000000000000000000000020000000000000000000000030000005014000000000000040000000900000000000000050000004d1d000004504c4159455200000000000000000000000000000004010a5400d5db21000000000000db21000000000000';
-// replay host: answer a fresh join with the captured host lobby, then keep the link alive
+// replay host: answer a fresh join with the captured host lobby, keep the link alive, ack reliable messages,
+// and start the session when the player is ready
 (() => {
   const { hx, toHex, log } = BOT;
   const H1 = localStorage.getItem('botH1'), H2 = localStorage.getItem('botH2');
-  let s = 3, stage = 0, ping = -1;
+  let s = 3, r = 3, stage = 0, ping = -1, started = false;
+  const UNREL = new Set([0x1e, 0x46, 0x4a, 0x42]);
+  const pending = [];     // reliable messages we sent, resent until acked: {seq, bytes, t}
+  const msg = (ty, body) => { const m = new Uint8Array(4 + body.length); m.set([ty & 255, ty >> 8, m.length & 255, m.length >> 8]); m.set(body, 4); return m; };
+  const u16 = (v) => [v & 255, (v >> 8) & 255];
+  const packet = (msgs) => { const n = msgs.reduce((a, m) => a + m.length, 0); const p = new Uint8Array(6 + n); p.set([0, 0, ...u16(4 + n), 0, 0]); let o = 6; for (const m of msgs) { p.set(m, o); o += m.length; } return p; };
+  const reliable = (ty, body) => { const m = msg(ty, [...u16(r), ...body]); pending.push({ seq: r, m, t: 0 }); r++; return m; };
+  let replyTo = null;
+  setInterval(() => { if (!replyTo) return; const now = performance.now(); const due = pending.filter((p) => now - p.t > 700); if (due.length) { due.forEach((p) => (p.t = now)); replyTo(packet(due.map((p) => p.m))); } }, 100);
+  function startSession() {
+    if (started) return; started = true; log('starting session');
+    replyTo(packet([reliable(0x4f, [0, 0, 1]), reliable(0xfaf, [0x30, 0x75, 0, 0]), reliable(0xfaf, [0x20, 0x75, 0, 0]), reliable(0xfaf, [0xff, 0xff, 0xff, 0xff]), reliable(0x4f, [0, 0, 0]), reliable(0xfcb, [0, 0, 0x20, 0x41])]));
+    setTimeout(() => replyTo(packet([reliable(0x2f, [0x50, 0x14, 0, 0, 0, 1, 0xff, 0xff])])), 1500);
+  }
   window.BOT_GAME = (pl, mac, ip, reply) => {
+    replyTo = reply;
     let o = 6; const msgs = [];
     while (o + 4 <= pl.length) { const ty = pl[o] | (pl[o + 1] << 8), ln = pl[o + 2] | (pl[o + 3] << 8); if (ln < 4) break; msgs.push({ ty, m: pl.subarray(o, o + ln) }); o += ln; }
+    const out = [];
     for (const { ty, m } of msgs) {
       const seq = m[4] | (m[5] << 8);
-      if (ty === 0x0b && stage === 0) { stage = 1; log('join -> lobby frag1'); reply(hx(H1)); }
-      else if (ty === 0x1e && stage === 1) { stage = 2; log('ack -> lobby frag2'); reply(hx(H2)); }
-      else if (ty === 0xfa3) { log('car record', m.length); const p = new Uint8Array(27); p.set([0, 0, 25, 0, 0, 0, 0x1e, 0, 8, 0, s & 255, s >> 8, seq & 255, seq >> 8]); s++; p.set([0x4a, 0, 13, 0, s & 255, s >> 8, 1, 0x10, 0, 0, 0, 0, 0], 14); ping = s; s++; reply(p); }
-      else if (ty === 0x46 && seq === ping) { const k = m[6]; ping = s; const p = new Uint8Array(19); p.set([0, 0, 17, 0, 0, 0, 0x4a, 0, 13, 0, s & 255, s >> 8, k, 0x10, 0, 0, 0, 0, 0]); s++; reply(p); }
-      else if (ty !== 0x46) log('msg', ty.toString(16), toHex(m));
+      if (ty === 0x0b && stage === 0) { stage = 1; log('join -> lobby frag1'); reply(hx(H1)); continue; }
+      if (ty === 0x1e) { if (stage === 1) { stage = 2; log('ack -> lobby frag2'); reply(hx(H2)); } const acked = m[6] | (m[7] << 8); for (let i = pending.length - 1; i >= 0; i--) if (pending[i].seq === acked) pending.splice(i, 1); continue; }
+      if (ty === 0x46) { if (seq === ping) { const k = m[6]; ping = s; out.push(msg(0x4a, [...u16(s++), k, 0x10, 0, 0, 0, 0, 0])); } continue; }
+      if (UNREL.has(ty)) continue;
+      out.push(msg(0x1e, [...u16(s++), ...u16(seq)]));   // ack every reliable message
+      if (ty === 0xfa3 && ping < 0) { ping = s; out.push(msg(0x4a, [...u16(s++), 1, 0x10, 0, 0, 0, 0, 0])); log('car record', m.length); }
+      else if (ty === 0x4f) { log('player status', toHex(m)); if (m[6] === 1 && m[8] === 1) startSession(); }
+      else log('msg', ty.toString(16), toHex(m));
     }
+    if (out.length) reply(packet(out));
   };
 })();
-
 // wire the bot to the game in iframe 0 (frames the game sends go to the bot; bot replies go into the game)
 window.botAttach = (w) => {
   const M = w.Module, tx = M._ps2web_net_tx;
