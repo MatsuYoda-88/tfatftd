@@ -39,9 +39,9 @@
   function toPeer(p, msgs) { if (!msgs.length) return; if (p.racing) { p.extra.push(...msgs); return; } send(p.mac, p.ip, 8667, 8667, packet(msgs)); }
   function lobbyFor(nc) {
     const others = members().filter((m) => m !== nc && m.record);
-    const pre = hx(T.pre); rename(pre);
-    pre[126] = 1 + others.length; pre[128] = 1 + others.length; pre[151] = others.length;
-    const parts = [pre, hx(T.rec)];
+    const tpl = hx(T.pre); rename(tpl);
+    tpl[126] = 1 + others.length; tpl[128] = 1 + others.length; tpl[151] = others.length;
+    const parts = [tpl.subarray(0, 130), nc.tail, tpl.subarray(151), hx(T.rec)];
     for (const m of others) {
       const e = new Uint8Array(13 + m.tail.length + 1); e[1] = 0x0d; e.set(m.ip, 2); e[6] = 0xdb; e[7] = 0x21; e[10] = 1; e[11] = m.slot; e.set(m.tail, 13); e[e.length - 1] = 1;
       parts.push(e, m.record);
