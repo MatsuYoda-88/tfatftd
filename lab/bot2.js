@@ -39,7 +39,7 @@
   function toPeer(p, msgs) { if (!msgs.length) return; if (p.racing) { p.extra.push(...msgs); return; } send(p.mac, p.ip, 8667, 8667, packet(msgs)); }
   function lobbyFor(nc) {
     const others = members().filter((m) => m !== nc && m.record);
-    const pre = hx(T.pre); rename(pre);
+    const pre = hx(T.pre); if (window.BOT_RENAME_LOBBY) rename(pre);
     pre[126] = 1 + others.length; pre[128] = 1 + others.length; pre[151] = others.length;
     const parts = [pre, hx(T.rec)];
     for (const m of others) {
