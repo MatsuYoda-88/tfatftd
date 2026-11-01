@@ -55,13 +55,14 @@ window.BOT_SEARCH_REPLY = '0000ff01000004009200000040313810050000000000100001000
   const packet = (msgs) => { const n = msgs.reduce((a, m) => a + m.length, 0); const p = new Uint8Array(6 + n); p.set([0, 0, ...u16(4 + n), 0, 0]); let o = 6; for (const m of msgs) { p.set(m, o); o += m.length; } return p; };
   const reliable = (ty, body) => { const m = msg(ty, [...u16(r), ...body]); pending.push({ seq: r, m, t: 0 }); r++; return m; };
   let replyTo = null;
-  setInterval(() => { if (!replyTo) return; const now = performance.now(); if (ping46 >= 0 && now - last46 > 1000) { ping46 = s; last46 = now; replyTo(packet([msg(0x46, [...u16(s++), k46])])); } const due = pending.filter((p) => now - p.t > 700); if (due.length) { due.forEach((p) => (p.t = now)); replyTo(packet(due.map((p) => p.m))); } }, 100);
+  setInterval(() => { if (!replyTo) return; const now = performance.now(); if (ping46 >= 0 && now - last46 > 1000) { ping46 = s; last46 = now; const a = msg(0x46, [...u16(s++), k46]); ping = s; replyTo(packet([a, msg(0x4a, [...u16(s++), k46, 0x10, 0, 0, 0, 0, 0])])); } const due = pending.filter((p) => now - p.t > 700); if (due.length) { due.forEach((p) => (p.t = now)); replyTo(packet(due.map((p) => p.m))); } }, 100);
   function startSession() {
     if (started) return; started = true; log('starting session');
     replyTo(packet([reliable(0x4f, [0, 0, 1]), reliable(0xfaf, [0x30, 0x75, 0, 0]), reliable(0xfaf, [0x20, 0x75, 0, 0]), reliable(0xfaf, [0xff, 0xff, 0xff, 0xff]), reliable(0x4f, [0, 0, 0]), reliable(0xfcb, [0, 0, 0x20, 0x41])]));
     setTimeout(() => replyTo(packet([reliable(0x2f, [0x50, 0x14, 0, 0, 0, 1, 0xff, 0xff])])), 1500);
   }
-  window.BOT_GAME = (pl, mac, ip, reply) => {
+  window.BOT_GAME = (pl, mac, ip, reply0) => {
+    const reply = (p) => { let o = 6, t = []; while (o + 4 <= p.length) { t.push((p[o] | (p[o + 1] << 8)).toString(16)); o += p[o + 2] | (p[o + 3] << 8) || 1e9; } (window.BOTOUT = window.BOTOUT || []).push(t.join(',')); if (BOTOUT.length > 3000) BOTOUT.shift(); reply0(p); };
     replyTo = reply;
     let o = 6; const msgs = [];
     while (o + 4 <= pl.length) { const ty = pl[o] | (pl[o + 1] << 8), ln = pl[o + 2] | (pl[o + 3] << 8); if (ln < 4) break; msgs.push({ ty, m: pl.subarray(o, o + ln) }); o += ln; }
@@ -75,7 +76,7 @@ window.BOT_SEARCH_REPLY = '0000ff01000004009200000040313810050000000000100001000
       if (UNREL.has(ty)) continue;
       out.push(msg(0x1e, [...u16(s++), ...u16(seq)]));   // ack every reliable message
       if (ty === 0xfa3 && ping < 0) { ping = s; out.push(msg(0x4a, [...u16(s++), 1, 0x10, 0, 0, 0, 0, 0])); ping46 = s; last46 = performance.now(); k46 = 1; out.push(msg(0x46, [...u16(s++), 1])); log('car record', m.length); }
-      else if (ty === 0x33) { log('player loaded'); out.push(reliable(0x33, [])); if (!racing) { racing = setInterval(() => { const m42 = hx(POSE42); m42[4] = s & 255; m42[5] = (s >> 8) & 255; s++; replyTo(packet([m42])); }, 110); } }
+      else if (ty === 0x33) { log('player loaded'); out.push(reliable(0x33, [])); out.push(reliable(0xfab, [0, 0, 0x60, 0x40])); if (!racing) { racing = setInterval(() => { const m42 = hx(POSE42); m42[4] = s & 255; m42[5] = (s >> 8) & 255; s++; replyTo(packet([m42])); }, 110); } }
       else if (ty === 0x4f) { log('player status', toHex(m)); if (m[6] === 1 && m[8] === 1) startSession(); }
       else log('msg', ty.toString(16), toHex(m));
     }
