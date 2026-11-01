@@ -45,7 +45,7 @@ window.BOT_SEARCH_REPLY = '0000ff01000004009200000040313810050000000000100001000
 (() => {
   const { hx, toHex, log } = BOT;
   const H1 = localStorage.getItem('botH1'), H2 = localStorage.getItem('botH2');
-  let s = 3, r = 3, stage = 0, ping = -1, started = false;
+  let s = 3, r = 3, stage = 0, ping = -1, ping46 = -1, started = false;
   const UNREL = new Set([0x1e, 0x46, 0x4a, 0x42]);
   const pending = [];     // reliable messages we sent, resent until acked: {seq, bytes, t}
   const msg = (ty, body) => { const m = new Uint8Array(4 + body.length); m.set([ty & 255, ty >> 8, m.length & 255, m.length >> 8]); m.set(body, 4); return m; };
@@ -69,9 +69,11 @@ window.BOT_SEARCH_REPLY = '0000ff01000004009200000040313810050000000000100001000
       if (ty === 0x0b && stage === 0) { stage = 1; log('join -> lobby frag1'); reply(hx(H1)); continue; }
       if (ty === 0x1e) { if (stage === 1) { stage = 2; log('ack -> lobby frag2'); reply(hx(H2)); } const acked = m[6] | (m[7] << 8); for (let i = pending.length - 1; i >= 0; i--) if (pending[i].seq === acked) pending.splice(i, 1); continue; }
       if (ty === 0x46) { if (seq === ping) { const k = m[6]; ping = s; out.push(msg(0x4a, [...u16(s++), k, 0x10, 0, 0, 0, 0, 0])); } continue; }
+      if (ty === 0x4a) { if (seq === ping46) { const k = m[6]; ping46 = s; out.push(msg(0x46, [...u16(s++), (k + 1) & 255])); } continue; }
       if (UNREL.has(ty)) continue;
       out.push(msg(0x1e, [...u16(s++), ...u16(seq)]));   // ack every reliable message
-      if (ty === 0xfa3 && ping < 0) { ping = s; out.push(msg(0x4a, [...u16(s++), 1, 0x10, 0, 0, 0, 0, 0])); log('car record', m.length); }
+      if (ty === 0xfa3 && ping < 0) { ping = s; out.push(msg(0x4a, [...u16(s++), 1, 0x10, 0, 0, 0, 0, 0])); ping46 = s; out.push(msg(0x46, [...u16(s++), 1])); log('car record', m.length); }
+      else if (ty === 0x33) { log('player loaded'); out.push(reliable(0x33, [])); }
       else if (ty === 0x4f) { log('player status', toHex(m)); if (m[6] === 1 && m[8] === 1) startSession(); }
       else log('msg', ty.toString(16), toHex(m));
     }
