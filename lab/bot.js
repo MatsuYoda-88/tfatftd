@@ -52,8 +52,8 @@ window.BOT_SEARCH_REPLY = '0000ff01000004009200000040313810050000000000100001000
       const seq = m[4] | (m[5] << 8);
       if (ty === 0x0b && stage === 0) { stage = 1; log('join -> lobby frag1'); reply(hx(H1)); }
       else if (ty === 0x1e && stage === 1) { stage = 2; log('ack -> lobby frag2'); reply(hx(H2)); }
-      else if (ty === 0xfa3) { log('car record', m.length); reply(hx('0000190000001e000800' + toHex([seq & 255, seq >> 8]) + '0300' + '4a000d00' + toHex([s & 255, s >> 8]) + '0900' + '200000000000')); s++; }
-      else if (ty === 0x46) { lastC = seq; const p = new Uint8Array(19); p.set([0, 0, 17, 0, 0, 0, 0x4a, 0, 13, 0, s & 255, s >> 8, lastC & 255, lastC >> 8, 0x10, 0, 0, 0, 0]); s++; reply(p); }
+      else if (ty === 0xfa3) { log('car record', m.length); const p = new Uint8Array(27); p.set([0, 0, 25, 0, 0, 0, 0x1e, 0, 8, 0, s & 255, s >> 8, seq & 255, seq >> 8]); s++; p.set([0x4a, 0, 13, 0, s & 255, s >> 8, 1, 0x10, 0, 0, 0, 0, 0], 14); s++; reply(p); }
+      else if (ty === 0x46) { const k = m[6]; const p = new Uint8Array(19); p.set([0, 0, 17, 0, 0, 0, 0x4a, 0, 13, 0, s & 255, s >> 8, k, 0x10, 0, 0, 0, 0, 0]); s++; reply(p); }
       else log('msg', ty.toString(16), toHex(m));
     }
   };
