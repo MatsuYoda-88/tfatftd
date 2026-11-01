@@ -44,7 +44,7 @@ window.BOT_SEARCH_REPLY = '0000ff01000004009200000040313810050000000000100001000
 (() => {
   const { hx, toHex, log } = BOT;
   const H1 = localStorage.getItem('botH1'), H2 = localStorage.getItem('botH2');
-  let s = 0x10, lastC = 0, stage = 0;
+  let s = 3, stage = 0;
   window.BOT_GAME = (pl, mac, ip, reply) => {
     let o = 6; const msgs = [];
     while (o + 4 <= pl.length) { const ty = pl[o] | (pl[o + 1] << 8), ln = pl[o + 2] | (pl[o + 3] << 8); if (ln < 4) break; msgs.push({ ty, m: pl.subarray(o, o + ln) }); o += ln; }
