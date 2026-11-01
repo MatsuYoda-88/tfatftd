@@ -46,6 +46,7 @@ window.BOT_SEARCH_REPLY = '0000ff01000004009200000040313810050000000000100001000
   const { hx, toHex, log } = BOT;
   const H1 = localStorage.getItem('botH1'), H2 = localStorage.getItem('botH2');
   let s = 3, r = 3, stage = 0, ping = -1, ping46 = -1, last46 = 0, k46 = 0, started = false, racing = 0;
+  const extra = [];   // in a session, small messages ride along with our car state
   // the bot's own car in a session: parked on the start line (a real host's state message, captured)
   const POSE42 = '42007900020300009e552944cfe2c842890b10c4e32c243c73586338c164363b74fc7f3ffe7fff7ffb7f00800080ff7f3f004000006910000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000';
   const UNREL = new Set([0x1e, 0x46, 0x4a, 0x42]);
@@ -55,7 +56,7 @@ window.BOT_SEARCH_REPLY = '0000ff01000004009200000040313810050000000000100001000
   const packet = (msgs) => { const n = msgs.reduce((a, m) => a + m.length, 0); const p = new Uint8Array(6 + n); p.set([0, 0, ...u16(4 + n), 0, 0]); let o = 6; for (const m of msgs) { p.set(m, o); o += m.length; } return p; };
   const reliable = (ty, body) => { const m = msg(ty, [...u16(r), ...body]); pending.push({ seq: r, m, t: 0 }); r++; return m; };
   let replyTo = null;
-  setInterval(() => { if (!replyTo) return; const now = performance.now(); if (ping46 >= 0 && now - last46 > 1000) { ping46 = s; last46 = now; const a = msg(0x46, [...u16(s++), k46]); ping = s; replyTo(packet([a, msg(0x4a, [...u16(s++), k46, 0x10, 0, 0, 0, 0, 0])])); } const due = pending.filter((p) => now - p.t > 700); if (due.length) { due.forEach((p) => (p.t = now)); replyTo(packet(due.map((p) => p.m))); } }, 100);
+  setInterval(() => { if (!replyTo) return; const now = performance.now(); if (ping46 >= 0 && now - last46 > 1000) { ping46 = s; last46 = now; const a = msg(0x46, [...u16(s++), k46]); ping = s; const b = msg(0x4a, [...u16(s++), k46, 0x10, 0, 0, 0, 0, 0]); if (racing) extra.push(a, b); else replyTo(packet([a, b])); } const due = pending.filter((p) => now - p.t > 700); if (due.length) { due.forEach((p) => (p.t = now)); replyTo(packet(due.map((p) => p.m))); } }, 100);
   function startSession() {
     if (started) return; started = true; log('starting session');
     replyTo(packet([reliable(0x4f, [0, 0, 1]), reliable(0xfaf, [0x30, 0x75, 0, 0]), reliable(0xfaf, [0x20, 0x75, 0, 0]), reliable(0xfaf, [0xff, 0xff, 0xff, 0xff]), reliable(0x4f, [0, 0, 0]), reliable(0xfcb, [0, 0, 0x20, 0x41])]));
@@ -76,11 +77,11 @@ window.BOT_SEARCH_REPLY = '0000ff01000004009200000040313810050000000000100001000
       if (UNREL.has(ty)) continue;
       out.push(msg(0x1e, [...u16(s++), ...u16(seq)]));   // ack every reliable message
       if (ty === 0xfa3 && ping < 0) { ping = s; out.push(msg(0x4a, [...u16(s++), 1, 0x10, 0, 0, 0, 0, 0])); ping46 = s; last46 = performance.now(); k46 = 1; out.push(msg(0x46, [...u16(s++), 1])); log('car record', m.length); }
-      else if (ty === 0x33) { log('player loaded'); out.push(reliable(0x33, [])); out.push(reliable(0xfab, [0, 0, 0x60, 0x40])); if (!racing) { racing = setInterval(() => { const m42 = hx(POSE42); m42[4] = s & 255; m42[5] = (s >> 8) & 255; s++; replyTo(packet([m42])); }, 110); } }
+      else if (ty === 0x33) { log('player loaded'); out.push(reliable(0x33, [])); out.push(reliable(0xfab, [0, 0, 0x60, 0x40])); if (!racing) { racing = setInterval(() => { const m42 = hx(POSE42); m42[4] = s & 255; m42[5] = (s >> 8) & 255; s++; const ex = extra.splice(0); replyTo(packet([m42, ...ex])); }, 110); } }
       else if (ty === 0x4f) { log('player status', toHex(m)); if (m[6] === 1 && m[8] === 1) startSession(); }
       else log('msg', ty.toString(16), toHex(m));
     }
-    if (out.length) reply(packet(out));
+    if (out.length) { if (racing) extra.push(...out); else reply(packet(out)); }
   };
 })();
 // wire the bot to the game in iframe 0 (frames the game sends go to the bot; bot replies go into the game)
