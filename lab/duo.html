@@ -3,4 +3,5 @@
 <style>html,body{margin:0;height:100%;background:#000}body{display:flex;flex-direction:column}iframe{flex:1;border:0;width:100%;min-height:0}</style></head>
 <body><iframe id=a src="./?duo=a" allow="cross-origin-isolated; gamepad; fullscreen"></iframe><iframe id=b src="./?duo=b" allow="cross-origin-isolated; gamepad; fullscreen"></iframe>
 <script>document.write('<script src="bot.js?v=' + Date.now() + '"><\/script>')</script>
-<script>if (location.search.includes('one')) document.getElementById('b').remove();</script></body></html>
+<script>if (location.search.includes('one')) document.getElementById('b').remove();
+if (location.search.includes('trio')) { const f = document.createElement('iframe'); f.id = 'c'; f.src = './?duo=c'; f.allow = 'cross-origin-isolated; gamepad; fullscreen'; document.body.insertBefore(f, document.getElementById('b').nextSibling); }</script></body></html>
