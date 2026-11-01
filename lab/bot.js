@@ -44,7 +44,7 @@ window.BOT_SEARCH_REPLY = '0000ff01000004009200000040313810050000000000100001000
 (() => {
   const { hx, toHex, log } = BOT;
   const H1 = localStorage.getItem('botH1'), H2 = localStorage.getItem('botH2');
-  let s = 3, stage = 0;
+  let s = 3, stage = 0, ping = -1;
   window.BOT_GAME = (pl, mac, ip, reply) => {
     let o = 6; const msgs = [];
     while (o + 4 <= pl.length) { const ty = pl[o] | (pl[o + 1] << 8), ln = pl[o + 2] | (pl[o + 3] << 8); if (ln < 4) break; msgs.push({ ty, m: pl.subarray(o, o + ln) }); o += ln; }
@@ -52,9 +52,9 @@ window.BOT_SEARCH_REPLY = '0000ff01000004009200000040313810050000000000100001000
       const seq = m[4] | (m[5] << 8);
       if (ty === 0x0b && stage === 0) { stage = 1; log('join -> lobby frag1'); reply(hx(H1)); }
       else if (ty === 0x1e && stage === 1) { stage = 2; log('ack -> lobby frag2'); reply(hx(H2)); }
-      else if (ty === 0xfa3) { log('car record', m.length); const p = new Uint8Array(27); p.set([0, 0, 25, 0, 0, 0, 0x1e, 0, 8, 0, s & 255, s >> 8, seq & 255, seq >> 8]); s++; p.set([0x4a, 0, 13, 0, s & 255, s >> 8, 1, 0x10, 0, 0, 0, 0, 0], 14); s++; reply(p); }
-      else if (ty === 0x46) { const k = m[6]; const p = new Uint8Array(19); p.set([0, 0, 17, 0, 0, 0, 0x4a, 0, 13, 0, s & 255, s >> 8, k, 0x10, 0, 0, 0, 0, 0]); s++; reply(p); }
-      else log('msg', ty.toString(16), toHex(m));
+      else if (ty === 0xfa3) { log('car record', m.length); const p = new Uint8Array(27); p.set([0, 0, 25, 0, 0, 0, 0x1e, 0, 8, 0, s & 255, s >> 8, seq & 255, seq >> 8]); s++; p.set([0x4a, 0, 13, 0, s & 255, s >> 8, 1, 0x10, 0, 0, 0, 0, 0], 14); ping = s; s++; reply(p); }
+      else if (ty === 0x46 && seq === ping) { const k = m[6]; ping = s; const p = new Uint8Array(19); p.set([0, 0, 17, 0, 0, 0, 0x4a, 0, 13, 0, s & 255, s >> 8, k, 0x10, 0, 0, 0, 0, 0]); s++; reply(p); }
+      else if (ty !== 0x46) log('msg', ty.toString(16), toHex(m));
     }
   };
 })();
