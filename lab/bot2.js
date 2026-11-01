@@ -4,6 +4,7 @@
   const hx = (h) => Uint8Array.from(h.match(/../g).map((x) => parseInt(x, 16)));
   const MAC = [2, 0x84, 0, 0, 0, 0xfe], IP = [10, 84, 0, 254];
   const NAME = 'TOKYO BOT';
+  const LOC = window.BOT_LOC || 0x146f, EVT = window.BOT_EVT || 0x0a, TXT = window.BOT_TXT || 0x1d66;
   const log = (s) => { (window.BOTLOG = window.BOTLOG || []).push(Math.round(performance.now()) + ' ' + s); };
   const T = {};
   fetch('bot2-data.json?v=' + Date.now()).then((r) => r.json()).then((d) => Object.assign(T, d));
@@ -39,7 +40,7 @@
   function toPeer(p, msgs) { if (!msgs.length) return; if (p.racing) { p.extra.push(...msgs); return; } send(p.mac, p.ip, 8667, 8667, packet(msgs)); }
   function lobbyFor(nc) {
     const others = members().filter((m) => m !== nc && m.record);
-    const tpl = hx(T.pre); rename(tpl);
+    const tpl = hx(T.pre); rename(tpl); tpl[0x48] = lo(LOC); tpl[0x49] = hi(LOC); tpl[84] = EVT; tpl[0x60] = lo(TXT); tpl[0x61] = hi(TXT);
     tpl[126] = 1 + others.length; tpl[128] = 1 + others.length; tpl[151] = others.length;
     const parts = [tpl.subarray(0, 130), nc.tail, tpl.subarray(151), hx(T.rec)];
     for (const m of others) {
@@ -132,7 +133,7 @@
     const pl = f.slice(u + 8, u + ul);
     if (dp === 8666 && pl.length === 16) {
       if (sessionStarted || !T.search) return;
-      const r = hx(T.search); r.set(pl.subarray(12, 16), 12); rename(r); r[24] = 1 + members().length; r.set(IP, 132);
+      const r = hx(T.search); r.set(pl.subarray(12, 16), 12); rename(r); r[0x50] = lo(LOC); r[0x51] = hi(LOC); r[92] = EVT; r[0x68] = lo(TXT); r[0x69] = hi(TXT); r[24] = 1 + members().length; r.set(IP, 132);
       send([255, 255, 255, 255, 255, 255], [255, 255, 255, 255], 1215, 8666, r); return;
     }
     if (dp !== 8667 || f[30] !== 10 || f[31] !== 84 || f[32] !== 0 || f[33] !== 254) return;
@@ -146,7 +147,7 @@
     for (const p of [...peers.values()]) if (t - p.lastSeen > 20000) leave(p, 'timed out');
     if (startAt && t >= startAt) {
       startAt = 0; const ms = members(); const grid = [0, 255, 255, 255]; ms.slice(0, 3).forEach((m, i) => { grid[i + 1] = m.slot; });
-      for (const x of ms) toPeer(x, [reliable(x, 0x2f, [0x50, 0x14, 0, 0, ...grid])]);
+      for (const x of ms) toPeer(x, [reliable(x, 0x2f, [lo(LOC), hi(LOC), 0, 0, ...grid])]);
     }
     for (const p of peers.values()) {
       if (p.ping46 >= 0 && t - p.last46 > 1000) {
