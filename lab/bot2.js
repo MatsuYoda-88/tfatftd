@@ -15,9 +15,9 @@
   function rename(b) {
     for (let i = 0; i + 6 <= b.length; i++) {
       if (b[i] === 0x50 && b[i + 1] === 0x4c && b[i + 2] === 0x41 && b[i + 3] === 0x59 && b[i + 4] === 0x45 && b[i + 5] === 0x52) {
-        putName(b, i, 16, NAME);
-        if (i >= 4 && b[i - 4] === 6 && !b[i - 3] && !b[i - 2] && !b[i - 1]) b[i - 4] = NAME.length;
-        i += 15;
+        const counted = i >= 4 && b[i - 4] === 6 && !b[i - 3] && !b[i - 2] && !b[i - 1];
+        if (counted) { for (let k = 0; k < 6; k++) b[i + k] = 'SERVER'.charCodeAt(k); i += 5; }
+        else { putName(b, i, 16, NAME); i += 15; }
       }
     }
   }
@@ -39,11 +39,11 @@
   function toPeer(p, msgs) { if (!msgs.length) return; if (p.racing) { p.extra.push(...msgs); return; } send(p.mac, p.ip, 8667, 8667, packet(msgs)); }
   function lobbyFor(nc) {
     const others = members().filter((m) => m !== nc && m.record);
-    const pre = hx(T.pre); if (window.BOT_RENAME_LOBBY) rename(pre);
+    const pre = hx(T.pre); rename(pre);
     pre[126] = 1 + others.length; pre[128] = 1 + others.length; pre[151] = others.length;
     const parts = [pre, hx(T.rec)];
     for (const m of others) {
-      const e = hx(T.jent); e.set(m.ip, 2); e[11] = m.slot; putName(e, 17, 16, m.name); e[13] = Math.min(15, m.name.length);
+      const e = new Uint8Array(13 + m.tail.length + 1); e[1] = 0x0d; e.set(m.ip, 2); e[6] = 0xdb; e[7] = 0x21; e[10] = 1; e[11] = m.slot; e.set(m.tail, 13); e[e.length - 1] = 1;
       parts.push(e, m.record);
     }
     const n = parts.reduce((a, b) => a + b.length, 0), all = new Uint8Array(n); let o = 0; for (const x of parts) { all.set(x, o); o += x.length; }
@@ -76,11 +76,11 @@
         if (p.joined) { leave(p, 'rejoined'); const np = newPeer(p.key, p.mac, p.ip); peers.set(p.key, np); p = np; out = []; }
         if (members().length >= 3) continue;
         const used = new Set(members().map((x) => x.slot)); p.slot = [1, 2, 3].find((s) => !used.has(s));
-        const nl = Math.min(15, m[8]); let nm = ''; for (let i = 0; i < nl; i++) nm += String.fromCharCode(m[12 + i]); if (nm) p.name = nm;
+        if (ln > 12) p.tail = m.slice(8, ln); const nl = Math.min(15, m[8]); let nm = ''; for (let i = 0; i < nl; i++) nm += String.fromCharCode(m[12 + i]); if (nm) p.name = nm;
         p.joined = true;
         for (const x of members()) {
           if (x === p) continue;
-          const b = new Uint8Array(33); b.set(p.ip, 0); b[4] = 0xdb; b[5] = 0x21; b[8] = 1; b[9] = 1; b[10] = p.slot; b[12] = Math.min(15, p.name.length); putName(b, 16, 16, p.name);
+          const b = new Uint8Array(12 + p.tail.length); b.set(p.ip, 0); b[4] = 0xdb; b[5] = 0x21; b[8] = 1; b[9] = 1; b[10] = p.slot; b.set(p.tail, 12);
           toPeer(x, [reliable(x, 0x27, b)]);
         }
         const first = [msg(0x1e, [lo(p.S), hi(p.S), lo(seq), hi(seq)])]; p.S++;
@@ -118,7 +118,7 @@
     }
     toPeer(p, out);
   }
-  function newPeer(key, mac, ip) { return { key, mac: Array.from(mac), ip: Array.from(ip), name: 'PLAYER', slot: 0, S: 1, R: 1, ping: -1, ping46: -1, k46: 0, last46: 0, lastSeen: now(), lastPose: 0, joined: false, ready: false, racing: false, record: null, frags: [], fragWait: -1, pending: [], extra: [] }; }
+  function newPeer(key, mac, ip) { return { key, mac: Array.from(mac), ip: Array.from(ip), name: 'PLAYER', tail: hx('06000000504c415945520000000000000000000000'), slot: 0, S: 1, R: 1, ping: -1, ping46: -1, k46: 0, last46: 0, lastSeen: now(), lastPose: 0, joined: false, ready: false, racing: false, record: null, frags: [], fragWait: -1, pending: [], extra: [] }; }
   function feed(f) {
     if (f.length < 42) return;
     const et = (f[12] << 8) | f[13];
