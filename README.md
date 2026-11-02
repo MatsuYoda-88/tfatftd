@@ -21,3 +21,4 @@ Got a PCSX2 texture pack for SLUS-21449? **Settings → HD texture pack → Choo
 
 Fan project. Not affiliated with or endorsed by Universal, Bandai Namco or Eutechnyx. No game files are hosted here.
 `coi-serviceworker.js` is by Guido Zuidhof (MIT).
+Online play borrows ideas from [th0mk/nfsu2-web](https://github.com/th0mk/nfsu2-web) (nfsu2.xyz, MIT, © 2026 th0mk): sender-timestamped, curve-smoothed car updates and a switch-style relay with ping-based lag control.
