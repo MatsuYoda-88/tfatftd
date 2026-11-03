@@ -1,16 +1,7 @@
-<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Duo Test</title>
-<script src="coi-serviceworker.js"></script>
-<style>
-:root{--bg:#0b0b0d;--fg:#ddd}
-html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:12px system-ui}
-.wrap{display:flex;height:100%;gap:4px}
-.half{flex:1;display:flex;flex-direction:column;min-width:0}
-.half b{padding:2px 6px}
-iframe{flex:1;border:0;width:100%}
-</style></head>
-<body><div class="wrap">
-<div class="half"><b>Player 1</b><iframe id="p1" allow="cross-origin-isolated; gamepad; fullscreen; autoplay" src="../?p=1"></iframe></div>
-<div class="half"><b>Player 2</b><iframe id="p2" allow="cross-origin-isolated; gamepad; fullscreen; autoplay" src="../?p=2"></iframe></div>
-</div></body></html>
+<!doctype html><html><head><meta charset=utf-8><title>duo</title>
+<script src="../coi-serviceworker.js"></script>
+<style>html,body{margin:0;height:100%;background:#000}body{display:flex;flex-direction:column}iframe{flex:1;border:0;width:100%;min-height:0}</style></head>
+<body><script>if (location.search.includes('hub')) { try { localStorage.setItem('tdnet-auto', '0'); setTimeout(() => localStorage.setItem('tdnet-auto', '1'), 15000); } catch (e) {} }</script><iframe id=a src="./?duo=a" allow="cross-origin-isolated; gamepad; fullscreen"></iframe><iframe id=b src="./?duo=b" allow="cross-origin-isolated; gamepad; fullscreen"></iframe>
+<script>document.write('<script src="' + (location.search.includes('hub') ? 'bot2.js' : 'bot.js') + '?v=' + Date.now() + '"><\/script>')</script>
+<script>if (location.search.includes('one')) document.getElementById('b').remove();
+if (location.search.includes('trio')) { const f = document.createElement('iframe'); f.id = 'c'; f.src = './?duo=c'; f.allow = 'cross-origin-isolated; gamepad; fullscreen'; document.body.insertBefore(f, document.getElementById('b').nextSibling); }</script></body></html>
