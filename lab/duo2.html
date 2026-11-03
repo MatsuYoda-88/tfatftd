@@ -11,6 +11,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:12px sy
 iframe{flex:1;border:0;width:100%}
 </style></head>
 <body><div class="wrap">
-<div class="half"><b>Player 1</b><iframe id="p1" allow="cross-origin-isolated; gamepad; fullscreen; autoplay" src="../?p=1"></iframe></div>
-<div class="half"><b>Player 2</b><iframe id="p2" allow="cross-origin-isolated; gamepad; fullscreen; autoplay" src="../?p=2"></iframe></div>
-</div></body></html>
+<div class="half"><b>Player 1</b><iframe id="p1" allow="cross-origin-isolated; gamepad; fullscreen; autoplay" data-p="1"></iframe></div>
+<div class="half"><b>Player 2</b><iframe id="p2" allow="cross-origin-isolated; gamepad; fullscreen; autoplay" data-p="2"></iframe></div>
+</div>
+<script>const lab=location.search.includes("lab"); document.querySelectorAll("iframe[data-p]").forEach(f=>f.src=(lab?"./":"../")+"?p="+f.dataset.p+(lab?"&cb="+Date.now():""));</script></body></html>
