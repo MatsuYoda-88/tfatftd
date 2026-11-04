@@ -22,7 +22,7 @@
   let scratch = 0;
   const ready = () => typeof Module !== 'undefined' && Module.running && Module._ps2web_peek && Module._ps2web_poke;
   function u32(addr) {
-    if (!addr || addr >= 0x2000000) return 0;
+    if (!addr || addr >= 0x4000000) return 0;
     if (!scratch) scratch = Module._malloc(64);
     Module._ps2web_peek(addr >>> 0, scratch, 1);
     return new Uint32Array(Module.HEAPU8.buffer, scratch, 1)[0] >>> 0;
@@ -30,7 +30,7 @@
   const f32buf = new Float32Array(1), u32view = new Uint32Array(f32buf.buffer);
   const asF = (u) => { u32view[0] = u >>> 0; return f32buf[0]; };
   const asU = (f) => { f32buf[0] = f; return u32view[0] >>> 0; };
-  const okPtr = (p) => p && p < 0x2000000 && (p & 3) === 0;
+  const okPtr = (p) => p && p < 0x4000000 && (p & 3) === 0;
   // a guest function call, run on the game thread (cruise only)
   async function call(fn, ...args) {
     if (!Module._ps2web_mp_call) throw new Error('this build has no call()');
@@ -558,5 +558,7 @@
   requestAnimationFrame(tick);
 
   window.TDHandling = { toggle, resolve, call, components, compList, u32, catalog: () => catalog, changes, reload: () => { catalog = null; load(); } };
+  // the button sits in the toolbar from the start; the panel itself opens on demand
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build); else build();
   if (getLS(LS_OPEN, '0') === '1') setTimeout(() => toggle(true), 1500);
 })();
