@@ -557,6 +557,6 @@
   }
   requestAnimationFrame(tick);
 
-  window.TDHandling = { toggle, resolve, call, catalog: () => catalog, changes, reload: () => { catalog = null; load(); } };
+  window.TDHandling = { toggle, resolve, call, components, compList, u32, catalog: () => catalog, changes, reload: () => { catalog = null; load(); } };
   if (getLS(LS_OPEN, '0') === '1') setTimeout(() => toggle(true), 1500);
 })();
