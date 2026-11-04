@@ -249,6 +249,7 @@
     searchEl = h('input', { type: 'search', placeholder: 'Search (spring, grip, lock, nos…)', oninput: filter });
     listEl = h('div', { class: 'list' });
     const presetSel = h('select', { title: 'Saved presets' });
+    let presetName = null;
     const refreshPresets = () => {
       const all = presets(); presetSel.replaceChildren(h('option', { value: '', text: 'Presets…' }), ...Object.keys(all).sort().map((n) => h('option', { value: n, text: n })));
     };
@@ -263,7 +264,8 @@
       h('div', { class: 'tools' }, searchEl,
         h('label', { title: 'Show only values you changed' }, h('input', { type: 'checkbox', onchange: (e) => { onlyChanged = e.target.checked; filter(); } }), ' changed'),
         presetSel,
-        h('button', { text: 'Save', title: 'Save current changes as a preset', onclick: () => { const n = prompt('Preset name'); if (n) { savePreset(n); refreshPresets(); } } }),
+        (presetName = h('input', { type: 'search', placeholder: 'Preset name', style: 'flex:0 1 110px;min-width:80px' })),
+        h('button', { text: 'Save', title: 'Save your current changes under the name on the left', onclick: () => { const n = presetName.value.trim(); if (!n) { presetName.focus(); status('Type a preset name first', true); return; } savePreset(n); refreshPresets(); presetName.value = ''; } }),
         h('button', { text: 'Export', title: 'Download your changes as a file', onclick: exportFile }),
         h('button', { text: 'Import', title: 'Load a changes file', onclick: importFile })),
       statusEl, listEl);
