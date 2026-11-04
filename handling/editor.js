@@ -191,6 +191,7 @@
 
   // ---------------- state ----------------
   const stock = new Map();   // carPtr:key -> stock value (first value seen on that car)
+  const edited = new Set();  // carPtr:key you changed (values the game moves by itself are not 'changed')
   let carNow = 0;
   const rows = [];           // {p, inst, el, input, range, valEl}
   const stockKey = (inst) => carNow.toString(16) + ':' + inst.key;
@@ -358,7 +359,8 @@
     if (r.p.min !== undefined && v < r.p.min) v = r.p.min;
     if (r.p.max !== undefined && v > r.p.max) v = r.p.max;
     const sk = stockKey(r.inst);
-    if (!stock.has(sk)) stock.set(sk, readVal(r.p, addr));
+    if (!stock.has(sk) || !edited.has(sk)) stock.set(sk, readVal(r.p, addr));
+    edited.add(sk);
     const keep = r.p.after && r.p.after.length && !r.quiet ? changes() : null;
     writeVal(r.p, addr, v);
     try { await afterWrite(r.p, r.inst); } catch (e) { status(r.p.label + ': ' + e.message, true); }
@@ -391,10 +393,10 @@
     r.row.classList.toggle('dead', !addr);
     if (!addr) { r.stockEl.textContent = 'not on this car'; return; }
     const v = readVal(r.p, addr), sk = stockKey(r.inst);
-    if (!stock.has(sk)) stock.set(sk, v);
+    if (!stock.has(sk) || !edited.has(sk)) stock.set(sk, v);   // not yours: stock follows the game
     const s = stock.get(sk);
     r.stockEl.textContent = 'stock ' + fmt(s, r.p);
-    r.row.classList.toggle('changed', Math.abs(v - s) > Math.max(1e-6, Math.abs(s) * 1e-6));
+    r.row.classList.toggle('changed', edited.has(sk) && Math.abs(v - s) > Math.max(1e-6, Math.abs(s) * 1e-6));
     if (!force && performance.now() - r.editing < 600) return;
     if (r.chk) r.chk.checked = !!v;
     if (r.range) {
@@ -492,8 +494,8 @@
     for (const r of rows) {
       if (!r.valEl && !r.chk) continue;
       const addr = addrOf(r.p, r.inst); if (!addr) continue;
-      const v = readVal(r.p, addr), s = stock.get(stockKey(r.inst));
-      if (s !== undefined && Math.abs(v - s) > Math.max(1e-6, Math.abs(s) * 1e-6)) out[r.inst.key] = v;
+      const sk = stockKey(r.inst), v = readVal(r.p, addr), s = stock.get(sk);
+      if (edited.has(sk) && s !== undefined && Math.abs(v - s) > Math.max(1e-6, Math.abs(s) * 1e-6)) out[r.inst.key] = v;
     }
     for (const s of tables) for (const c of s.cells) {
       const sk = carNow.toString(16) + ':' + c.key, st = stock.get(sk);
@@ -516,9 +518,10 @@
     let n = 0;
     for (const r of rows) {
       if (!r.valEl && !r.chk) continue;
-      const s = stock.get(stockKey(r.inst)), addr = addrOf(r.p, r.inst);
-      if (s === undefined || !addr) continue;
+      const sk = stockKey(r.inst), s = stock.get(sk), addr = addrOf(r.p, r.inst);
+      if (s === undefined || !addr || !edited.has(sk)) continue;
       if (Math.abs(readVal(r.p, addr) - s) > 1e-6) { await set(r, s); n++; }
+      edited.delete(sk);
     }
     for (const t of tables) for (const c of t.cells) { const st = stock.get(carNow.toString(16) + ':' + c.key); if (st !== undefined) writeVal({ type: c.c.type || 'f32' }, c.addr, st); }
     setLS(LS_LIVE, '{}'); status('Back to stock (' + n + ' values)');
