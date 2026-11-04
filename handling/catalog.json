@@ -1,0 +1,6121 @@
+{
+ "version": 1,
+ "goal_descriptions": {
+  "grip": "Cornering grip racing: fast laps with the tyres near their peak.",
+  "drift": "Sliding: starting, holding and linking drifts at big angles.",
+  "highway": "Wangan runs: top speed and calm handling at very high speed.",
+  "drag": "Straight-line acceleration and quick shifting.",
+  "launch": "Getting off the line with the least wheelspin and bog.",
+  "stability": "Not spinning, handling bumps, landings and braking calmly."
+ },
+ "locators": {
+  "car": "u32 at 0x5FAE70 (player-1 car pointer array, HUD reads it at 0x14c754); class vtable 0x521480",
+  "engine": "[car+0x94c]",
+  "clutch": "[car+0x948]",
+  "gearbox": "[car+0x950]",
+  "chassis": "[car+0x944]",
+  "actor": "[car+0xf0]",
+  "steering": "[car+0x954] (verified 0x27d410)",
+  "axle0": "[car+0x914]",
+  "axle1": "[car+0x918]",
+  "axle0IsFront": true,
+  "wheel{a}{w}": "[axle{a}+0x74+4*w]",
+  "tyre{a}{w}": "[wheel{a}{w}+0x70]",
+  "tyredata{a}{w}": "[tyre{a}{w}+0x104]",
+  "diff{a}": "[axle{a}+0x11c]",
+  "kin{a}": "[axle{a}+0x118]",
+  "i4wd": "[clutch+0x94] (0 if absent)",
+  "drivingRespect": "[chassis+0x1ec]",
+  "points": "[car+0x82c]",
+  "driftMeter": "[0x5ca2e4] (HUD 0 + 0x2c4; 0 if no meter)",
+  "components": {
+   "kind": "global-list",
+   "head": "0x5d14d0",
+   "headIsPtr": true,
+   "next": "0x4",
+   "obj": "0x8",
+   "owner": "0x58",
+   "recipe": "list = u32 at 0x5d14d0 (sentinel node); node = [list+4]; while node != list: obj = [node+8]; if [obj+0x58] == car: yield obj; node = [node+4]",
+   "alt": {
+    "kind": "chassis-linked-list",
+    "base": "chassis",
+    "head": "0x74",
+    "headIsPtr": true,
+    "next": "0x4",
+    "obj": "0x8",
+    "recipe": "list = [chassis+0x74]; same walk, no owner filter (this is the list find-by-name 0x278ca8 uses)"
+   },
+   "proof": "Chassis::AddComponent 0x278c48 inserts the same component into [chassis+0x74] (0x278c64) and [0x5d14d0] (0x278c74) via 0x278548 (node {prev,next,obj}, 12 bytes); global walk 0x27a928..0x27a9b0 reads [obj+0x58] as the owner car",
+   "vptr": "obj+8",
+   "known": {
+    "ActiveYawControl": "0x567290",
+    "AntiRollBar": "0x583fc8 (+0x70: 1 FRONT, 2 REAR)",
+    "Brakes RCBRK": "0x583b00",
+    "RaceCarTractionAssist TCRL": "0x567878 (absent on disc cars)",
+    "RaceCarSteering": "0x569880 (direct: [car+0x954])",
+    "i4WD": "0x5684d0 (direct: [clutch+0x94])",
+    "DrivingRespect": "direct: [chassis+0x1ec]",
+    "Pacejka96Model": "0x569fd8 (direct: tyredata)",
+    "RaceCarEngine": "0x569140",
+    "RaceCarClutch": "0x56ccc0",
+    "RaceCarGearbox": "0x56c300",
+    "Torsen": "0x5688c8",
+    "Kinematics": "0x565ce8",
+    "RaceCarTyre": "0x584418",
+    "RaceCarChassis": "0x5667b8"
+   }
+  },
+  "conventions": {
+   "chain": "'X->+0xNN' = u32 read at X+0xNN",
+   "abs": "'abs:HEX' = that address itself",
+   "comp": "'comp:VT[#n]' = n-th (0-based) car component whose [obj+8] == VT",
+   "match": "optional per-param {off,value}: only write if the i32 at loc+off equals value (used for front/rear anti-roll bars)",
+   "after": "guest calls to run after a write; args are locator strings or numbers; for perAxle/perWheel params run once per edited axle/wheel"
+  },
+  "apply_helpers": {
+   "recompute_static_loads": {
+    "call": "0x2791c0",
+    "args": [
+     "chassis",
+     0
+    ],
+    "note": "arg 1 would add 0.01 m ride height every call - always pass 0"
+   },
+   "replace_wheel_mounts": {
+    "call": "0x273480",
+    "args": [
+     "car",
+     "axle{a}"
+    ]
+   },
+   "reconfigure_all_components": {
+    "call": "0x27fe60",
+    "args": [
+     "chassis"
+    ],
+    "note": "re-runs steering/AYC/tyre/engine Configure: resets Configure-set fields to code defaults"
+   },
+   "reapply_mass": {
+    "call": "0x241468",
+    "args": [
+     "car",
+     "car"
+    ],
+    "note": "0x311480 is an empty stub, then vt+0x148 = GSRaceCar::SetMass 0x271a90 with f12 = [car+0x300]"
+   },
+   "engine_peaks": {
+    "call": "0x286568",
+    "args": [
+     "engine"
+    ]
+   },
+   "engine_power_bands": {
+    "call": "0x288a30",
+    "args": [
+     "engine"
+    ]
+   },
+   "tyre_peak_tables": {
+    "call": "0x28fab8",
+    "args": [
+     "tyredata00"
+    ]
+   },
+   "pacejka_refresh": "poke 0 into [tyre{a}{w}]+0xe8 for all four tyres"
+  }
+ },
+ "params": [
+  {
+   "id": "eng_friction1",
+   "group": "Engine",
+   "label": "Engine drag (fixed part)",
+   "desc": "The engine fights itself with this much torque whenever you are not on full throttle. It is part of \"friction = F1 + F2 x rpm\", taken away as friction x (1 - throttle). Higher makes the revs drop faster when you lift and gives more engine braking.",
+   "loc": "engine",
+   "off": "0xf4",
+   "type": "f32",
+   "unit": "N·m",
+   "min": 0,
+   "max": 50,
+   "step": 0.25,
+   "stock_example": 1.25,
+   "apply": "live",
+   "risk": "None found; very high values just kill the revs off-throttle.",
+   "source": "01-engine.md 2.3; read in Engine::Update 0x286860 (lwc1 0xf4)",
+   "goals": {
+    "drift": "Up: lifting slows the rear wheels more, helping to start a drift. Down: lifting keeps the wheels spinning, holding a drift smoother.",
+    "stability": "Up: more engine braking calms the car when you lift. Down: lifting off does almost nothing."
+   },
+   "goals_best": {
+    "drift": "balance",
+    "stability": "up"
+   },
+   "ends": {
+    "low": "Free-revving",
+    "high": "More engine braking"
+   },
+   "proof": [
+    [
+     "0x286860",
+     "0xf4"
+    ]
+   ]
+  },
+  {
+   "id": "eng_friction2",
+   "group": "Engine",
+   "label": "Engine drag (per rpm)",
+   "desc": "Extra engine friction that grows with rpm (N·m for every rpm). At 5000 rpm the RX-7 value 0.07 gives 350 N·m of drag when you lift. Higher means much stronger engine braking at high revs and faster rev drop between shifts.",
+   "loc": "engine",
+   "off": "0xf8",
+   "type": "f32",
+   "unit": "N·m per rpm",
+   "min": 0,
+   "max": 0.2,
+   "step": 0.005,
+   "stock_example": 0.07,
+   "apply": "live",
+   "risk": "None found.",
+   "source": "01-engine.md 2.3; read 0x286854 (lwc1 0xf8)",
+   "goals": {
+    "drift": "Up: big engine braking on lift can snap the rear out. Down: smooth lift-off, easier to hold angle.",
+    "drag": "Up: revs fall more between shifts. Down: revs stay up so the next gear pulls sooner.",
+    "stability": "Up: strong engine braking slows you when you lift. Down: the car coasts."
+   },
+   "goals_best": {
+    "drift": "balance",
+    "drag": "down",
+    "stability": "up"
+   },
+   "ends": {
+    "low": "Coasts freely",
+    "high": "Strong engine braking"
+   },
+   "proof": [
+    [
+     "0x286854",
+     "0xf8"
+    ]
+   ]
+  },
+  {
+   "id": "eng_inertia",
+   "group": "Engine",
+   "label": "Flywheel weight",
+   "desc": "How heavy the spinning engine is (kg·m²). The clutch divides spare torque by this to change rpm, so a light flywheel revs up and down very fast. It only matters while the clutch slips (launches, shifts, clutch kicks).",
+   "loc": "engine",
+   "off": "0xf0",
+   "type": "f32",
+   "unit": "kg·m²",
+   "min": 0.03,
+   "max": 1.0,
+   "step": 0.01,
+   "stock_example": 0.12,
+   "apply": "live (read every step by the clutch)",
+   "risk": "Below about 0.03 the rpm can jump hundreds of rpm per step and bounce off the limiter; never 0 (division by zero in the clutch, 0x29d460).",
+   "source": "01-engine.md 2.3; read by RaceCarClutch::Update 0x29d460 (lwc1 0xf0)",
+   "goals": {
+    "launch": "Up: rpm holds better when the clutch bites, less bog. Down: revs up fast but drops quickly off the line.",
+    "drift": "Up: clutch kicks feel lazy. Down: revs flare fast so clutch kicks hit hard.",
+    "drag": "Up: slower rev changes during shifts. Down: quicker rev matching on shifts."
+   },
+   "goals_best": {
+    "launch": "balance",
+    "drift": "down",
+    "drag": "down"
+   },
+   "ends": {
+    "low": "Light, revvy",
+    "high": "Heavy, smooth"
+   },
+   "proof": [
+    [
+     "0x29d460",
+     "0xf0"
+    ]
+   ]
+  },
+  {
+   "id": "eng_gamma",
+   "group": "Engine",
+   "label": "Throttle curve",
+   "desc": "The pedal is raised to this power before use (0.5 = square root). Lower numbers make a small pedal press give a lot of throttle. There is also a 10% dead zone after the curve.",
+   "loc": "engine",
+   "off": "0xec",
+   "type": "f32",
+   "unit": "exponent",
+   "min": 0.2,
+   "max": 2.0,
+   "step": 0.05,
+   "stock_example": 0.5,
+   "apply": "live. Note: the chassis Configure pass (0x27fe60, run when Driving Assist or DRIFT-PHYSICS is changed, and by any 'after' call to 0x27fe60) rewrites this field to its code default.",
+   "risk": "Do not set 0 or negative (pow of 0 gives full throttle at any press).",
+   "source": "01-engine.md 2.3/2.6; read in throttle map 0x2869b4 (lwc1 0xec); written 0.5 by RaceCarEngine physics-mode 0x287bd0",
+   "goals": {
+    "drift": "Up: finer throttle control for holding angle with a pad. Down: small presses give big wheelspin.",
+    "launch": "Up: easier to feed throttle gently off the line. Down: touchy throttle that spins the tyres."
+   },
+   "goals_best": {
+    "drift": "down",
+    "launch": "up"
+   },
+   "ends": {
+    "low": "Touchy throttle",
+    "high": "Gentle throttle"
+   },
+   "proof": [
+    [
+     "0x2869b4",
+     "0xec"
+    ],
+    [
+     "0x287bd0",
+     "0xec"
+    ]
+   ]
+  },
+  {
+   "id": "eng_torque_mult",
+   "group": "Engine",
+   "label": "Torque multiplier",
+   "desc": "Every value from the torque curve is multiplied by this. 1.2 means 20% more torque at every rpm. It does not change where the limiter is.",
+   "loc": "engine",
+   "off": "0xe8",
+   "type": "f32",
+   "unit": "x",
+   "min": 0.2,
+   "max": 3.0,
+   "step": 0.05,
+   "stock_example": 1.0,
+   "apply": "live (also consider re-running the peak/band functions, see the torque-curve table)",
+   "risk": "Very large torque can trigger the known wheel-spin hang (huge wheel accelerations) and overpower the 3x-peak-torque clutch cap.",
+   "source": "01-engine.md 2.1/2.3; read in TorqueAtRPM 0x286b24 (lwc1 0xe8)",
+   "goals": {
+    "drag": "Up: faster acceleration in every gear. Down: slower everywhere.",
+    "launch": "Up: more pull but more wheelspin off the line. Down: less wheelspin but slower.",
+    "drift": "Up: easier to keep the rear wheels spinning. Down: drifts die without wheelspin.",
+    "highway": "Up: higher top speed against drag. Down: lower top speed."
+   },
+   "goals_best": {
+    "drag": "up",
+    "launch": "balance",
+    "drift": "up",
+    "highway": "up"
+   },
+   "ends": {
+    "low": "Less power",
+    "high": "More power"
+   },
+   "proof": [
+    [
+     "0x286b24",
+     "0xe8"
+    ]
+   ]
+  },
+  {
+   "id": "eng_torque_mult2",
+   "group": "Engine",
+   "label": "Torque multiplier 2",
+   "desc": "A second torque multiplier used only by the race-car engine (ComputeTorque). It works like the first one.",
+   "loc": "engine",
+   "off": "0x1dc",
+   "type": "f32",
+   "unit": "x",
+   "min": 0.2,
+   "max": 3.0,
+   "step": 0.05,
+   "stock_example": 1.0,
+   "apply": "live. Note: the chassis Configure pass (0x27fe60, run when Driving Assist or DRIFT-PHYSICS is changed, and by any 'after' call to 0x27fe60) rewrites this field to its code default.",
+   "risk": "Same as the first torque multiplier.",
+   "source": "01-engine.md 2.3; read in ComputeTorque 0x287cec (lwc1 0x1dc); reset by 0x287ba0",
+   "goals": {
+    "drag": "Up: faster acceleration. Down: slower.",
+    "drift": "Up: easier wheelspin. Down: harder to keep the rear spinning."
+   },
+   "goals_best": {
+    "drag": "up",
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Less power",
+    "high": "More power"
+   },
+   "proof": [
+    [
+     "0x287cec",
+     "0x1dc"
+    ],
+    [
+     "0x287ba0",
+     "0x1dc"
+    ]
+   ],
+   "vt": "0x569140"
+  },
+  {
+   "id": "eng_limiter_band",
+   "group": "Engine",
+   "label": "Rev limiter softness",
+   "desc": "Above the last point of the torque curve, torque falls by half across this many rpm, and the engine can never go past max + this band. Bigger lets the engine over-rev further.",
+   "loc": "engine",
+   "off": "0xb4",
+   "type": "f32",
+   "unit": "rpm",
+   "min": 50,
+   "max": 1500,
+   "step": 25,
+   "stock_example": 300,
+   "apply": "live (copied into the working value 0xb8 every engine update, 0x2881b0)",
+   "risk": "Never 0: TorqueAtRPM divides by the band (0x286af8 reads 0xb8).",
+   "source": "01-engine.md 2.3/2.6; read 0x2881b0 (lwc1 0xb4), copied to 0xb8 0x2881bc; 0xb8 read in TorqueAtRPM 0x286af8",
+   "goals": {
+    "drag": "Up: you can stay in a gear a bit longer past redline. Down: hard cut at redline.",
+    "drift": "Up: more room on the limiter mid-drift before you must shift. Down: you bounce off the limiter sooner."
+   },
+   "goals_best": {
+    "drag": "up",
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Hard limiter",
+    "high": "Soft over-rev"
+   },
+   "proof": [
+    [
+     "0x2881b0",
+     "0xb4"
+    ],
+    [
+     "0x2881bc",
+     "0xb8"
+    ],
+    [
+     "0x286af8",
+     "0xb8"
+    ]
+   ],
+   "vt": "0x569140"
+  },
+  {
+   "id": "eng_peak_hp",
+   "group": "Engine",
+   "label": "Peak power for NOS cap",
+   "desc": "The engine's peak horsepower, worked out once from the torque curve. NOS can add at most 200 / this value as a torque boost, so lowering it lets NOS add more. It also feeds the drift push force.",
+   "loc": "engine",
+   "off": "0xd0",
+   "type": "f32",
+   "unit": "hp",
+   "min": 20,
+   "max": 2000,
+   "step": 5,
+   "stock_example": 260.7,
+   "apply": "live; recomputed by call 0x286568(engine) (that overwrites your edit)",
+   "risk": "Never 0 (NOS divides 200 by it, 0x288794). Values far below the real peak make NOS huge.",
+   "source": "01-engine.md 2.3/2.6; read by NOS 0x288784 (lwc1 0xd0 via chassis+0x17c), written by Init 0x286500",
+   "goals": {
+    "drag": "Up: NOS boost is capped lower. Down: NOS can add more torque."
+   },
+   "goals_best": {
+    "drag": "down"
+   },
+   "ends": {
+    "low": "Bigger NOS kick",
+    "high": "Smaller NOS kick"
+   },
+   "proof": [
+    [
+     "0x288784",
+     "0xd0"
+    ],
+    [
+     "0x286500",
+     "0xd0"
+    ]
+   ],
+   "vt": "0x569140"
+  },
+  {
+   "id": "eng_peak_torque",
+   "group": "Engine",
+   "label": "Peak torque for clutch cap",
+   "desc": "Peak engine torque in lb-ft, worked out from the curve. The clutch can never carry more than 3 x this. Raising it lifts that ceiling.",
+   "loc": "engine",
+   "off": "0xd4",
+   "type": "f32",
+   "unit": "lb-ft",
+   "min": 20,
+   "max": 2000,
+   "step": 5,
+   "stock_example": 217.4,
+   "apply": "live; recomputed by call 0x286568(engine)",
+   "risk": "Very low values make the clutch slip all the time (car crawls).",
+   "source": "01-engine.md 2.3; clutch reads it 0x29d140 (lwc1 0xd4, cap = 3 x value); written by Init 0x286504",
+   "goals": {
+    "launch": "Up: the clutch can hold more torque. Down: clutch slips, softer launch."
+   },
+   "goals_best": {
+    "launch": "up"
+   },
+   "ends": {
+    "low": "Clutch slips more",
+    "high": "Clutch holds more"
+   },
+   "proof": [
+    [
+     "0x29d140",
+     "0xd4"
+    ],
+    [
+     "0x286504",
+     "0xd4"
+    ]
+   ],
+   "vt": "0x569140"
+  },
+  {
+   "id": "nos_installed",
+   "group": "Engine",
+   "label": "NOS installed",
+   "desc": "Turns the nitrous system on or off for this car. The NOS kit upgrade sets it to 1.",
+   "loc": "engine",
+   "off": "0x80",
+   "type": "bool32",
+   "unit": "",
+   "min": 0,
+   "max": 1,
+   "step": 1,
+   "stock_example": 0,
+   "apply": "live",
+   "risk": "With 0 litres left NOS still does nothing; set litres too.",
+   "source": "01-engine.md 2.3/2.4; written 0x2864e4 (default 0) and by the NOS keyword/upgrade",
+   "goals": {
+    "drag": "Up (on): you can use nitrous for a big boost. Down (off): no nitrous.",
+    "highway": "Up (on): nitrous helps reach top speed. Down (off): no boost."
+   },
+   "goals_best": {
+    "drag": "up",
+    "highway": "up"
+   },
+   "ends": {
+    "low": "Off: no NOS",
+    "high": "On: NOS available"
+   },
+   "proof": [
+    [
+     "0x2864e4",
+     "0x80"
+    ]
+   ],
+   "vt": "0x569140"
+  },
+  {
+   "id": "nos_gain",
+   "group": "Engine",
+   "label": "NOS strength",
+   "desc": "The NOS boost is (rpm / optimum rpm)² x this x the flow rate, capped at 200 hp worth. 1.0 is the normal kit.",
+   "loc": "engine",
+   "off": "0x88",
+   "type": "f32",
+   "unit": "x",
+   "min": 0,
+   "max": 5,
+   "step": 0.05,
+   "stock_example": 1.0,
+   "apply": "live",
+   "risk": "The 200 hp cap (code immediate 200.0 at 0x288788) still limits it; very high values just hit the cap sooner.",
+   "source": "01-engine.md 2.6; NOS 0x288724 reads t1+8 where t1=engine+0x80 (0x2886bc)",
+   "goals": {
+    "drag": "Up: NOS reaches its full boost at lower rpm. Down: weaker NOS.",
+    "launch": "Up: more NOS kick off the line. Down: less."
+   },
+   "goals_best": {
+    "drag": "up",
+    "launch": "up"
+   },
+   "ends": {
+    "low": "Weak NOS",
+    "high": "Strong NOS"
+   },
+   "proof": [
+    [
+     "0x288724",
+     "0x8"
+    ]
+   ],
+   "vt": "0x569140",
+   "note": "proof imm is relative to t1 = engine+0x80"
+  },
+  {
+   "id": "nos_rate",
+   "group": "Engine",
+   "label": "NOS flow rate",
+   "desc": "Litres of nitrous used each second. It also multiplies the boost, so a faster flow is stronger but runs out sooner.",
+   "loc": "engine",
+   "off": "0x98",
+   "type": "f32",
+   "unit": "L/s",
+   "min": 0.05,
+   "max": 5,
+   "step": 0.05,
+   "stock_example": 1.0,
+   "apply": "live",
+   "risk": "Huge values empty the bottle in one frame.",
+   "source": "01-engine.md 2.6; NOS reads t1+0x18 at 0x288738 and 0x2887d0 (t1=engine+0x80)",
+   "goals": {
+    "drag": "Up: stronger but shorter boost. Down: weaker but lasts longer."
+   },
+   "goals_best": {
+    "drag": "balance"
+   },
+   "ends": {
+    "low": "Long, gentle",
+    "high": "Short, strong"
+   },
+   "proof": [
+    [
+     "0x288738",
+     "0x18"
+    ],
+    [
+     "0x2887d0",
+     "0x18"
+    ]
+   ],
+   "vt": "0x569140",
+   "note": "proof imm is relative to t1 = engine+0x80"
+  },
+  {
+   "id": "nos_optimum_rpm",
+   "group": "Engine",
+   "label": "NOS best rpm",
+   "desc": "NOS gives its full boost at or above this rpm and less below it (it scales with (rpm/this)²).",
+   "loc": "engine",
+   "off": "0x9c",
+   "type": "f32",
+   "unit": "rpm",
+   "min": 1000,
+   "max": 10000,
+   "step": 100,
+   "stock_example": 5000,
+   "apply": "live",
+   "risk": "Never 0 (NOS divides rpm by it, 0x288730).",
+   "source": "01-engine.md 2.6; NOS reads t1+0x1c at 0x288710 (t1=engine+0x80)",
+   "goals": {
+    "drag": "Up: NOS only strong near redline. Down: full NOS from lower rpm.",
+    "launch": "Up: weak NOS off the line. Down: strong NOS right away."
+   },
+   "goals_best": {
+    "drag": "down",
+    "launch": "down"
+   },
+   "ends": {
+    "low": "Boost early",
+    "high": "Boost late"
+   },
+   "proof": [
+    [
+     "0x288710",
+     "0x1c"
+    ]
+   ],
+   "vt": "0x569140",
+   "note": "proof imm is relative to t1 = engine+0x80"
+  },
+  {
+   "id": "nos_litres",
+   "group": "Engine",
+   "label": "NOS left",
+   "desc": "How much nitrous is left in the bottle, in litres. It goes down while you hold the NOS button.",
+   "loc": "engine",
+   "off": "0x90",
+   "type": "f32",
+   "unit": "L",
+   "min": 0,
+   "max": 50,
+   "step": 0.5,
+   "stock_example": 0,
+   "apply": "live",
+   "risk": "None.",
+   "source": "01-engine.md 2.6; NOS reads/writes t1+0x10 at 0x2886e0 / 0x2887f4 (t1=engine+0x80)",
+   "goals": {
+    "drag": "Up: more nitrous to use. Down: less."
+   },
+   "goals_best": {
+    "drag": "up"
+   },
+   "ends": {
+    "low": "Empty",
+    "high": "Full bottle"
+   },
+   "proof": [
+    [
+     "0x2886e0",
+     "0x10"
+    ],
+    [
+     "0x2887f4",
+     "0x10"
+    ]
+   ],
+   "vt": "0x569140",
+   "note": "proof imm is relative to t1 = engine+0x80"
+  },
+  {
+   "id": "nos_capacity",
+   "group": "Engine",
+   "label": "NOS bottle size",
+   "desc": "The size of the nitrous bottle in litres (shown on the HUD). Refilling uses this.",
+   "loc": "engine",
+   "off": "0x8c",
+   "type": "f32",
+   "unit": "L",
+   "min": 0,
+   "max": 50,
+   "step": 0.5,
+   "stock_example": 0,
+   "apply": "live",
+   "risk": "None (HUD/refill only).",
+   "source": "01-engine.md 2.3/2.4; written 0x2864ec (default 0) and by NITROUS-CAPACITY-LITRES",
+   "goals": {
+    "drag": "Up: bigger bottle. Down: smaller bottle."
+   },
+   "goals_best": {
+    "drag": "up"
+   },
+   "ends": {
+    "low": "Small bottle",
+    "high": "Big bottle"
+   },
+   "proof": [
+    [
+     "0x2864ec",
+     "0x8c"
+    ]
+   ],
+   "vt": "0x569140"
+  },
+  {
+   "id": "clutch_capacity",
+   "group": "Clutch",
+   "label": "Clutch grip",
+   "desc": "The most torque the clutch can pass (N·m), scaled by throttle: 10% at no throttle up to 100% at full. It is also capped at 3 x the engine's peak torque.",
+   "loc": "clutch",
+   "off": "0x70",
+   "type": "f32",
+   "unit": "N·m",
+   "min": 50,
+   "max": 3000,
+   "step": 10,
+   "stock_example": 400,
+   "apply": "live (0x74 holds a copy that is not used in the update)",
+   "risk": "Very low values make the car crawl; 0 means no drive at all.",
+   "source": "04-transmission.md clutch section; read in RaceCarClutch::Update 0x29d10c (lwc1 0x70)",
+   "goals": {
+    "launch": "Up: the clutch bites hard and can bog or spin the tyres. Down: it slips, softer start.",
+    "drag": "Up: no clutch slip after shifts. Down: power is lost to slipping.",
+    "drift": "Up: clutch kicks hit harder. Down: kicks are soft."
+   },
+   "goals_best": {
+    "launch": "balance",
+    "drag": "up",
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Slips more",
+    "high": "Grabs hard"
+   },
+   "proof": [
+    [
+     "0x29d10c",
+     "0x70"
+    ]
+   ],
+   "vt": "0x56ccc0"
+  },
+  {
+   "id": "clutch_in_speed",
+   "group": "Clutch",
+   "label": "Anti-stall speed",
+   "desc": "Below this speed (m/s) the automatic clutch opens when the revs get low, so the engine does not stall, and keeps a little slip with no throttle.",
+   "loc": "clutch",
+   "off": "0xa0",
+   "type": "f32",
+   "unit": "m/s",
+   "min": 0,
+   "max": 40,
+   "step": 0.5,
+   "stock_example": 10,
+   "apply": "live",
+   "risk": "None found.",
+   "source": "04-transmission.md auto clutch; read in forced-open rules 0x29c6f0 (lwc1 0xa0)",
+   "goals": {
+    "launch": "Up: clutch stays open longer at slow speed. Down: it closes sooner, sharper starts."
+   },
+   "goals_best": {
+    "launch": "down"
+   },
+   "ends": {
+    "low": "Bites early",
+    "high": "Slips longer"
+   },
+   "proof": [
+    [
+     "0x29c6f0",
+     "0xa0"
+    ]
+   ],
+   "vt": "0x56ccc0"
+  },
+  {
+   "id": "clutch_launch_end",
+   "group": "Clutch",
+   "label": "Launch control end speed",
+   "desc": "The launch-control clutch helper stops at this speed (m/s), or when the clutch locks.",
+   "loc": "clutch",
+   "off": "0xb8",
+   "type": "f32",
+   "unit": "m/s",
+   "min": 0,
+   "max": 100,
+   "step": 1,
+   "stock_example": 100,
+   "apply": "live",
+   "risk": "None found.",
+   "source": "04-transmission.md clutch fields; read 0x29c848 (lwc1 0xb8), default written 0x29c4a0",
+   "goals": {
+    "launch": "Up: launch helper manages the clutch for longer. Down: you get full clutch control sooner."
+   },
+   "goals_best": {
+    "launch": "balance"
+   },
+   "ends": {
+    "low": "Short launch help",
+    "high": "Long launch help"
+   },
+   "proof": [
+    [
+     "0x29c848",
+     "0xb8"
+    ],
+    [
+     "0x29c4a0",
+     "0xb8"
+    ]
+   ],
+   "vt": "0x56ccc0"
+  },
+  {
+   "id": "gb_final",
+   "group": "Gearbox",
+   "label": "Final drive",
+   "desc": "Every gear ratio is multiplied by this. A bigger number means faster acceleration but a lower top speed in each gear.",
+   "loc": "gearbox",
+   "off": "0xf0",
+   "type": "f32",
+   "unit": "ratio",
+   "min": 1.5,
+   "max": 8,
+   "step": 0.05,
+   "stock_example": 4.1,
+   "apply": "live",
+   "risk": "Never 0 (speed maths divide by ratio x final).",
+   "source": "04-transmission.md gears; read in GetTotalRatio 0x298070 (lwc1 0xf0)",
+   "goals": {
+    "drag": "Up: quicker acceleration, more shifts. Down: longer gears, slower pull.",
+    "highway": "Up: hits the limiter at a lower top speed. Down: higher top speed if the engine can pull it.",
+    "launch": "Up: more torque at the wheels off the line. Down: softer launch.",
+    "drift": "Up: easier wheelspin in low gears. Down: a gear holds a wider speed range."
+   },
+   "goals_best": {
+    "drag": "up",
+    "highway": "down",
+    "launch": "up",
+    "drift": "balance"
+   },
+   "ends": {
+    "low": "Top speed",
+    "high": "Acceleration"
+   },
+   "proof": [
+    [
+     "0x298070",
+     "0xf0"
+    ]
+   ],
+   "vt": "0x56c300"
+  },
+  {
+   "id": "gb_reverse",
+   "group": "Gearbox",
+   "label": "Reverse gear",
+   "desc": "The reverse gear ratio. The game stores it as a negative number; the editor shows it positive.",
+   "loc": "gearbox",
+   "off": "0xec",
+   "type": "f32_neg",
+   "unit": "ratio",
+   "min": 1,
+   "max": 6,
+   "step": 0.05,
+   "stock_example": 2.85,
+   "apply": "live",
+   "risk": "Never 0.",
+   "source": "04-transmission.md gears; read 0x29805c (lwc1 0xec)",
+   "goals": {
+    "stability": "Up: stronger reverse. Down: gentler reverse."
+   },
+   "goals_best": {
+    "stability": "balance"
+   },
+   "ends": {
+    "low": "Gentle reverse",
+    "high": "Strong reverse"
+   },
+   "proof": [
+    [
+     "0x29805c",
+     "0xec"
+    ]
+   ],
+   "vt": "0x56c300"
+  },
+  {
+   "id": "gb_num_gears",
+   "group": "Gearbox",
+   "label": "Number of gears",
+   "desc": "How many forward gears you can use. You can lower it to stop the box using top gears.",
+   "loc": "gearbox",
+   "off": "0xb0",
+   "type": "i32",
+   "unit": "gears",
+   "min": 1,
+   "max": 5,
+   "step": 1,
+   "stock_example": 5,
+   "apply": "live",
+   "risk": "Never set above the stock count unless you also fill the new ratios in the gear table: an empty (0) ratio divides by zero in the speed maths (0x298138) and can freeze the game. Max 13.",
+   "source": "04-transmission.md gears; read 0x297d40 (lw 0xb0)",
+   "goals": {
+    "highway": "Up: more gears to reach top speed. Down: fewer gears, may cap top speed."
+   },
+   "goals_best": {
+    "highway": "up"
+   },
+   "ends": {
+    "low": "Fewer gears",
+    "high": "More gears"
+   },
+   "proof": [
+    [
+     "0x297d40",
+     "0xb0"
+    ]
+   ],
+   "vt": "0x56c300"
+  },
+  {
+   "id": "gb_up_rate",
+   "group": "Gearbox",
+   "label": "Upshift speed",
+   "desc": "How much of an upshift happens each frame (1 / CHANGE-UP-TIME frames). 0.1 means 10 frames. During the shift the clutch is open and throttle is cut, so bigger is faster.",
+   "loc": "gearbox",
+   "off": "0x80",
+   "type": "f32",
+   "unit": "per frame",
+   "min": 0.01,
+   "max": 1,
+   "step": 0.01,
+   "stock_example": 0.1,
+   "apply": "live (used at the next upshift)",
+   "risk": "Never 0 (a shift would never end).",
+   "source": "04-transmission.md shifting; read 0x29890c (lwc1 0x80); copied to rate 0x7c on shift",
+   "goals": {
+    "drag": "Up: quicker upshifts, less time without power. Down: slow shifts lose speed.",
+    "drift": "Up: shifting mid-drift barely breaks traction. Down: long shifts can kill a drift."
+   },
+   "goals_best": {
+    "drag": "up",
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Slow shifts",
+    "high": "Fast shifts"
+   },
+   "proof": [
+    [
+     "0x29890c",
+     "0x80"
+    ]
+   ],
+   "vt": "0x56c300"
+  },
+  {
+   "id": "gb_down_rate",
+   "group": "Gearbox",
+   "label": "Downshift speed",
+   "desc": "How much of a downshift happens each frame (1 / CHANGE-DOWN-TIME frames).",
+   "loc": "gearbox",
+   "off": "0x84",
+   "type": "f32",
+   "unit": "per frame",
+   "min": 0.01,
+   "max": 1,
+   "step": 0.01,
+   "stock_example": 0.2,
+   "apply": "live",
+   "risk": "Never 0.",
+   "source": "04-transmission.md shifting; read 0x2986e4 (lwc1 0x84)",
+   "goals": {
+    "drift": "Up: quick downshifts to set up a drift. Down: slow downshifts.",
+    "grip": "Up: faster corner entry downshifts. Down: slower."
+   },
+   "goals_best": {
+    "drift": "up",
+    "grip": "up"
+   },
+   "ends": {
+    "low": "Slow downshifts",
+    "high": "Fast downshifts"
+   },
+   "proof": [
+    [
+     "0x2986e4",
+     "0x84"
+    ]
+   ],
+   "vt": "0x56c300"
+  },
+  {
+   "id": "gb_clutch_factor",
+   "group": "Gearbox",
+   "label": "Rev-match window",
+   "desc": "If engine and wheel speeds are within this (shown in rpm) during a shift, the shift ends at once. Bigger means shifts finish sooner.",
+   "loc": "gearbox",
+   "off": "0x130",
+   "type": "f32_rpm_from_radps",
+   "unit": "rpm",
+   "min": 0,
+   "max": 3000,
+   "step": 25,
+   "stock_example": 477.5,
+   "apply": "live",
+   "risk": "None found.",
+   "source": "04-transmission.md synchro; read 0x299a94 (lwc1 0x130); RX-7 CLUTCH-FACTOR 50 rad/s = 477 rpm",
+   "goals": {
+    "drag": "Up: shifts end early, less lost time. Down: full-length shifts."
+   },
+   "goals_best": {
+    "drag": "up"
+   },
+   "ends": {
+    "low": "Full shifts",
+    "high": "Quick re-engage"
+   },
+   "proof": [
+    [
+     "0x299a94",
+     "0x130"
+    ]
+   ],
+   "vt": "0x56c300"
+  },
+  {
+   "id": "gb_suggested_up",
+   "group": "Gearbox",
+   "label": "Auto upshift rpm floor",
+   "desc": "The automatic gearbox shifts up at the top of the 90%-power band, or at this rpm if it is higher. -1 means not used.",
+   "loc": "gearbox",
+   "off": "0x120",
+   "type": "f32",
+   "unit": "rpm",
+   "min": -1,
+   "max": 12000,
+   "step": 100,
+   "stock_example": -1,
+   "apply": "live (auto and semi-auto only)",
+   "risk": "Above the max rpm the auto box may never shift up.",
+   "source": "04-transmission.md auto logic; read in GetShiftRpms 0x29a478 (lwc1 0x120)",
+   "goals": {
+    "drag": "Up: auto box holds gears to higher rpm. Down: it shifts at the power-band top."
+   },
+   "goals_best": {
+    "drag": "balance"
+   },
+   "ends": {
+    "low": "Shift early",
+    "high": "Shift late"
+   },
+   "proof": [
+    [
+     "0x29a478",
+     "0x120"
+    ]
+   ],
+   "vt": "0x56c300"
+  },
+  {
+   "id": "gb_mode",
+   "group": "Gearbox",
+   "label": "Gearbox type",
+   "desc": "The gearbox type picked in the menu: 1 auto, 2 semi-auto, 3 manual. The player code copies it into the active mode every frame.",
+   "loc": "gearbox",
+   "off": "0x74",
+   "type": "i32",
+   "unit": "mode",
+   "min": 1,
+   "max": 3,
+   "step": 1,
+   "stock_example": 1,
+   "apply": "live (copied to 0x70 each frame at 0x2f7f60)",
+   "risk": "Values other than 0..3 are untested.",
+   "source": "04-transmission.md modes; read by player code 0x2f7f5c (lw 0x74) then stored to 0x70",
+   "goals": {
+    "drag": "Up (manual): you pick shift points. Down (auto): the box shifts for you.",
+    "drift": "Up (manual): clutch kicks and held gears work. Down (auto): the box may shift mid-drift."
+   },
+   "goals_best": {
+    "drag": "up",
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Auto",
+    "high": "Manual"
+   },
+   "proof": [
+    [
+     "0x2f7f5c",
+     "0x74"
+    ],
+    [
+     "0x2f7f60",
+     "0x70"
+    ]
+   ],
+   "vt": "0x56c300"
+  },
+  {
+   "id": "gb_friction1",
+   "group": "Gearbox",
+   "label": "Gearbox drag (fixed)",
+   "desc": "A fixed drag torque from the gearbox, applied to the driven axle while the car moves.",
+   "loc": "gearbox",
+   "off": "0xa8",
+   "type": "f32",
+   "unit": "N·m",
+   "min": 0,
+   "max": 50,
+   "step": 0.5,
+   "stock_example": 5.0,
+   "apply": "live",
+   "risk": "None.",
+   "source": "04-transmission.md Step friction; read 0x298a40 (lwc1 0xa8)",
+   "goals": {
+    "highway": "Up: a bit more drag, lower top speed. Down: less drag."
+   },
+   "goals_best": {
+    "highway": "down"
+   },
+   "ends": {
+    "low": "Free",
+    "high": "Draggy"
+   },
+   "proof": [
+    [
+     "0x298a40",
+     "0xa8"
+    ]
+   ],
+   "vt": "0x56c300"
+  },
+  {
+   "id": "torsen_bias_ratio",
+   "group": "Differential",
+   "label": "Diff lock (bias ratio)",
+   "desc": "The slower wheel can get up to this many times the torque of the faster one. 1 = open diff, 10 = nearly locked. Upgrades reach 10.",
+   "loc": "diff{a}",
+   "off": "0xa0",
+   "type": "f32",
+   "unit": "ratio",
+   "min": 1,
+   "max": 20,
+   "step": 0.1,
+   "stock_example": 3.5,
+   "apply": "live (rear axle on RWD cars; skip axles whose vptr is not Torsen)",
+   "risk": "None found.",
+   "source": "05-differential.md 3.2; Torsen Update 0x285de8 / Split 0x285a88",
+   "goals": {
+    "drift": "Up: both rear wheels spin together so the car slides and holds angle easily. Down: the inside wheel spins away and drifts fade.",
+    "grip": "Up: strong drive out of corners but more push-on understeer or snap. Down: smoother but the inside wheel spins.",
+    "launch": "Up: both wheels push off the line. Down: one wheel spins.",
+    "stability": "Up: power oversteer comes on sharper. Down: calmer on power."
+   },
+   "goals_best": {
+    "drift": "up",
+    "grip": "balance",
+    "launch": "up",
+    "stability": "down"
+   },
+   "ends": {
+    "low": "Open, calm",
+    "high": "Locked, more drift"
+   },
+   "proof": [
+    [
+     "0x285e50",
+     "0xa0"
+    ],
+    [
+     "0x285b4c",
+     "0xa0"
+    ]
+   ],
+   "perAxle": [
+    "0",
+    "1"
+   ],
+   "vt": "0x5688c8"
+  },
+  {
+   "id": "torsen_bias_torque",
+   "group": "Differential",
+   "label": "Diff full-lock torque",
+   "desc": "How much torque (plus preload) is needed before the full bias ratio is used. Lower means the diff locks fully with less throttle.",
+   "loc": "diff{a}",
+   "off": "0xa4",
+   "type": "f32",
+   "unit": "N·m (game units)",
+   "min": 100,
+   "max": 20000,
+   "step": 50,
+   "stock_example": 5000,
+   "apply": "live (rear axle on RWD cars; skip axles whose vptr is not Torsen)",
+   "risk": "Division by these values happens (0x285e4c..), so never set full-lock torque or lock-in range to 0.",
+   "source": "05-differential.md 3.2; Torsen Update 0x285de8 / Split 0x285a88",
+   "goals": {
+    "drift": "Up: needs lots of throttle to lock. Down: locks up even with a little throttle.",
+    "grip": "Up: gentle lock at part throttle. Down: locks hard early."
+   },
+   "goals_best": {
+    "drift": "down",
+    "grip": "up"
+   },
+   "ends": {
+    "low": "Locks easily",
+    "high": "Locks only on power"
+   },
+   "proof": [
+    [
+     "0x285e44",
+     "0xa4"
+    ],
+    [
+     "0x285d74",
+     "0xa4"
+    ]
+   ],
+   "perAxle": [
+    "0",
+    "1"
+   ],
+   "vt": "0x5688c8"
+  },
+  {
+   "id": "torsen_preload",
+   "group": "Differential",
+   "label": "Diff preload",
+   "desc": "Lock that is always there, even off throttle. If preload is equal to the full-lock torque the diff is always fully locked.",
+   "loc": "diff{a}",
+   "off": "0xa8",
+   "type": "f32",
+   "unit": "N·m (game units)",
+   "min": 0,
+   "max": 20000,
+   "step": 50,
+   "stock_example": 0,
+   "apply": "live (rear axle on RWD cars; skip axles whose vptr is not Torsen)",
+   "risk": "None found.",
+   "source": "05-differential.md 3.2; Torsen Update 0x285de8 / Split 0x285a88",
+   "goals": {
+    "drift": "Up: the diff stays locked off-throttle, drifts link easily. Down: the diff opens when you lift.",
+    "stability": "Up: the car pushes on corner entry. Down: free to turn when coasting."
+   },
+   "goals_best": {
+    "drift": "up",
+    "stability": "down"
+   },
+   "ends": {
+    "low": "Opens off-throttle",
+    "high": "Always locked"
+   },
+   "proof": [
+    [
+     "0x285e3c",
+     "0xa8"
+    ],
+    [
+     "0x285d70",
+     "0xa8"
+    ]
+   ],
+   "perAxle": [
+    "0",
+    "1"
+   ],
+   "vt": "0x5688c8"
+  },
+  {
+   "id": "torsen_null_bias",
+   "group": "Differential",
+   "label": "Diff lock-in range",
+   "desc": "The wheel speed difference over which the lock builds from nothing to full. Small means the diff locks as soon as the wheels differ.",
+   "loc": "diff{a}",
+   "off": "0xac",
+   "type": "f32",
+   "unit": "rad/s",
+   "min": 0.05,
+   "max": 20,
+   "step": 0.05,
+   "stock_example": 1.0,
+   "apply": "live (rear axle on RWD cars; skip axles whose vptr is not Torsen)",
+   "risk": "Division by these values happens (0x285e4c..), so never set full-lock torque or lock-in range to 0.",
+   "source": "05-differential.md 3.2; Torsen Update 0x285de8 / Split 0x285a88",
+   "goals": {
+    "drift": "Up: soft, progressive locking. Down: instant locking, sharper breakaway."
+   },
+   "goals_best": {
+    "drift": "down"
+   },
+   "ends": {
+    "low": "Instant lock",
+    "high": "Progressive lock"
+   },
+   "proof": [
+    [
+     "0x285b28",
+     "0xac"
+    ]
+   ],
+   "perAxle": [
+    "0",
+    "1"
+   ],
+   "vt": "0x5688c8"
+  },
+  {
+   "id": "torsen_reverse_bias",
+   "group": "Differential",
+   "label": "Diff coast lock",
+   "desc": "How the diff acts off throttle (coasting). 1 or less: the faster wheel gets all the coast torque. Between 1 and 1.55: half lock. Above 1.55: full lock on coast.",
+   "loc": "diff{a}",
+   "off": "0xb0",
+   "type": "f32",
+   "unit": "mode value",
+   "min": 0,
+   "max": 3,
+   "step": 0.05,
+   "stock_example": 0,
+   "apply": "live (rear axle on RWD cars; skip axles whose vptr is not Torsen)",
+   "risk": "None found.",
+   "source": "05-differential.md 3.2; Torsen Update 0x285de8 / Split 0x285a88",
+   "goals": {
+    "drift": "Up: coast lock keeps the car sliding when you lift. Down: lifting lets the rear grip up.",
+    "stability": "Up: lift-off can rotate the car. Down: lift-off is calm."
+   },
+   "goals_best": {
+    "drift": "up",
+    "stability": "down"
+   },
+   "ends": {
+    "low": "Open on coast",
+    "high": "Locked on coast"
+   },
+   "proof": [
+    [
+     "0x285b74",
+     "0xb0"
+    ],
+    [
+     "0x285b94",
+     "0xb0"
+    ]
+   ],
+   "perAxle": [
+    "0",
+    "1"
+   ],
+   "vt": "0x5688c8"
+  },
+  {
+   "id": "i4wd_min",
+   "group": "Differential",
+   "label": "4WD normal front share",
+   "desc": "The share of torque sent to the front wheels when cruising (0 = all rear).",
+   "loc": "clutch->+0x94",
+   "off": "0x90",
+   "type": "f32",
+   "unit": "",
+   "min": 0,
+   "max": 1,
+   "step": 0.01,
+   "stock_example": "0.15 (01EVO7GSR; RX-7 has no i4WD)",
+   "apply": "live (only on cars with an i4WD block: Evo, WRX/STI, GT-R)",
+   "risk": "Pointer is 0 on cars without i4WD: the editor must skip it. Division by the scales (0x285590..0x285604): never 0.",
+   "source": "05-differential.md 3.4; RaceCarI4wdController::Update 0x285588; i4WD pointer stored at clutch+0x94 by Bind 0x29c51c",
+   "goals": {
+    "drift": "Up: more front pull, harder to slide. Down: rear-biased, easier to drift.",
+    "grip": "Up: more front drive, stable exits. Down: more rear steer.",
+    "launch": "Up: more wheels pushing off the line. Down: rear wheelspin."
+   },
+   "goals_best": {
+    "drift": "down",
+    "grip": "up",
+    "launch": "up"
+   },
+   "ends": {
+    "low": "Rear-biased",
+    "high": "Front-biased"
+   },
+   "proof": [
+    [
+     "0x285654",
+     "0x90"
+    ],
+    [
+     "0x29c51c",
+     "0x94"
+    ]
+   ],
+   "vt": "0x5684d0"
+  },
+  {
+   "id": "i4wd_max",
+   "group": "Differential",
+   "label": "4WD drift front share",
+   "desc": "The most torque sent forward when the car detects a slide, to pull it straight. Also used below 20 m/s.",
+   "loc": "clutch->+0x94",
+   "off": "0x94",
+   "type": "f32",
+   "unit": "",
+   "min": 0,
+   "max": 1,
+   "step": 0.01,
+   "stock_example": "0.40 (01EVO7GSR)",
+   "apply": "live (only on cars with an i4WD block: Evo, WRX/STI, GT-R)",
+   "risk": "Pointer is 0 on cars without i4WD: the editor must skip it. Division by the scales (0x285590..0x285604): never 0.",
+   "source": "05-differential.md 3.4; RaceCarI4wdController::Update 0x285588; i4WD pointer stored at clutch+0x94 by Bind 0x29c51c",
+   "goals": {
+    "drift": "Up: the car pulls itself out of drifts. Down: lets the slide go on.",
+    "stability": "Up: strong anti-spin pull. Down: less help.",
+    "launch": "Up: more front drive at low speed. Down: rear-heavy launches."
+   },
+   "goals_best": {
+    "drift": "down",
+    "stability": "up",
+    "launch": "up"
+   },
+   "ends": {
+    "low": "Lets it slide",
+    "high": "Pulls straight"
+   },
+   "proof": [
+    [
+     "0x2856a0",
+     "0x94"
+    ],
+    [
+     "0x29c51c",
+     "0x94"
+    ]
+   ],
+   "vt": "0x5684d0"
+  },
+  {
+   "id": "i4wd_transfer",
+   "group": "Differential",
+   "label": "4WD transfer smoothness",
+   "desc": "Above 0 the front share changes smoothly with how far past the drift limit you are; 0 or less makes it jump between normal and drift share.",
+   "loc": "clutch->+0x94",
+   "off": "0x98",
+   "type": "f32",
+   "unit": "",
+   "min": -1,
+   "max": 1,
+   "step": 0.05,
+   "stock_example": "0.95 (01EVO7GSR)",
+   "apply": "live (only on cars with an i4WD block: Evo, WRX/STI, GT-R)",
+   "risk": "Pointer is 0 on cars without i4WD: the editor must skip it. Division by the scales (0x285590..0x285604): never 0.",
+   "source": "05-differential.md 3.4; RaceCarI4wdController::Update 0x285588; i4WD pointer stored at clutch+0x94 by Bind 0x29c51c",
+   "goals": {
+    "drift": "Up: smooth, early shifting of torque forward. Down: on/off switching."
+   },
+   "goals_best": {
+    "drift": "balance"
+   },
+   "ends": {
+    "low": "On/off",
+    "high": "Smooth"
+   },
+   "proof": [
+    [
+     "0x2855f8",
+     "0x98"
+    ],
+    [
+     "0x29c51c",
+     "0x94"
+    ]
+   ],
+   "vt": "0x5684d0"
+  },
+  {
+   "id": "i4wd_drift_angle",
+   "group": "Differential",
+   "label": "4WD drift angle scale",
+   "desc": "Rear slip (rad) used to judge a drift; bigger lets more angle happen before torque moves forward.",
+   "loc": "clutch->+0x94",
+   "off": "0x9c",
+   "type": "f32",
+   "unit": "",
+   "min": 0.05,
+   "max": 3,
+   "step": 0.05,
+   "stock_example": "0.90 (01EVO7GSR)",
+   "apply": "live (only on cars with an i4WD block: Evo, WRX/STI, GT-R)",
+   "risk": "Pointer is 0 on cars without i4WD: the editor must skip it. Division by the scales (0x285590..0x285604): never 0.",
+   "source": "05-differential.md 3.4; RaceCarI4wdController::Update 0x285588; i4WD pointer stored at clutch+0x94 by Bind 0x29c51c",
+   "goals": {
+    "drift": "Up: more angle before the 4WD steps in. Down: it steps in early."
+   },
+   "goals_best": {
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Steps in early",
+    "high": "Allows angle"
+   },
+   "proof": [
+    [
+     "0x285590",
+     "0x9c"
+    ],
+    [
+     "0x29c51c",
+     "0x94"
+    ]
+   ],
+   "vt": "0x5684d0"
+  },
+  {
+   "id": "i4wd_drift_rate",
+   "group": "Differential",
+   "label": "4WD drift yaw scale",
+   "desc": "Allowed turning speed (rad/s) before the 4WD calls it a drift; bigger allows faster rotation.",
+   "loc": "clutch->+0x94",
+   "off": "0xa0",
+   "type": "f32",
+   "unit": "",
+   "min": 0.05,
+   "max": 6,
+   "step": 0.05,
+   "stock_example": "2.20 (01EVO7GSR)",
+   "apply": "live (only on cars with an i4WD block: Evo, WRX/STI, GT-R)",
+   "risk": "Pointer is 0 on cars without i4WD: the editor must skip it. Division by the scales (0x285590..0x285604): never 0.",
+   "source": "05-differential.md 3.4; RaceCarI4wdController::Update 0x285588; i4WD pointer stored at clutch+0x94 by Bind 0x29c51c",
+   "goals": {
+    "drift": "Up: more rotation allowed. Down: pulls straight quickly.",
+    "stability": "Up: less anti-spin help. Down: more help."
+   },
+   "goals_best": {
+    "drift": "up",
+    "stability": "down"
+   },
+   "ends": {
+    "low": "Strict",
+    "high": "Lenient"
+   },
+   "proof": [
+    [
+     "0x285604",
+     "0xa0"
+    ],
+    [
+     "0x29c51c",
+     "0x94"
+    ]
+   ],
+   "vt": "0x5684d0"
+  },
+  {
+   "id": "ax_spring",
+   "group": "Suspension",
+   "label": "Spring rate",
+   "desc": "How stiff each spring is (N/m, per wheel). Stiff springs move less, so the body rolls and dives less but bumps hit harder. The damper strength also scales with it.",
+   "loc": "axle{a}",
+   "off": "0x134",
+   "type": "f32",
+   "unit": "N/m",
+   "min": 5000,
+   "max": 400000,
+   "step": 1000,
+   "stock_example": [
+    84000,
+    58500
+   ],
+   "apply": "live; then run the after call so static sag and per-wheel mass are recomputed",
+   "risk": "Very soft springs plus big loads can bottom out every step; extreme stiffness with landings is limited only by the 40 x mass force clamp. Do not set 0 (damping uses sqrt(k x m) and sag divides by k, 0x279328).",
+   "source": "02-suspension.md 4/6; Wheel::Update 0x33208c (lwc1 0x134); sag in 0x2791c0 (0x27931c)",
+   "goals": {
+    "grip": "Up: sharper turn-in and less roll. Down: more grip on bumpy roads.",
+    "drift": "Up (front): quicker direction changes for linking. Down (rear): more rear grip, harder to slide.",
+    "stability": "Up: jumpy over bumps and landings. Down: soaks up bumps.",
+    "highway": "Up: steadier at speed with downforce. Down: floaty at high speed."
+   },
+   "goals_best": {
+    "grip": "balance",
+    "drift": "balance",
+    "stability": "down",
+    "highway": "up"
+   },
+   "ends": {
+    "low": "Soft, comfy",
+    "high": "Stiff, sharp"
+   },
+   "proof": [
+    [
+     "0x33208c",
+     "0x134"
+    ],
+    [
+     "0x27931c",
+     "0x134"
+    ]
+   ],
+   "perAxle": [
+    "0",
+    "1"
+   ],
+   "after": [
+    {
+     "call": "0x2791c0",
+     "args": [
+      "chassis",
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ax_bump",
+   "group": "Suspension",
+   "label": "Bump damping",
+   "desc": "How much the shock slows the wheel going up. The game stores the square root of this ratio; damper force = 2·sqrt(k·m)·sqrt(ratio)·speed.",
+   "loc": "axle{a}",
+   "off": "0x138",
+   "type": "f32_sqrt",
+   "unit": "ratio",
+   "min": 0.01,
+   "max": 2,
+   "step": 0.01,
+   "stock_example": [
+    0.3,
+    0.25
+   ],
+   "apply": "live (raw ratio also kept at 0x13c, not read)",
+   "risk": "Very high values plus a landing make huge force spikes (cut only by the 40 x mass clamp).",
+   "source": "02-suspension.md 4/6; Wheel::Update 0x3320c4 (lwc1 0x138)",
+   "goals": {
+    "grip": "Up: quicker weight transfer, sharper response. Down: lazier.",
+    "stability": "Up: harsh over bumps. Down: wallowy, bouncy.",
+    "drift": "Up: snappier transitions. Down: smoother transitions."
+   },
+   "goals_best": {
+    "grip": "up",
+    "stability": "balance",
+    "drift": "balance"
+   },
+   "ends": {
+    "low": "Soft bumps",
+    "high": "Firm bumps"
+   },
+   "proof": [
+    [
+     "0x3320c4",
+     "0x138"
+    ]
+   ],
+   "perAxle": [
+    "0",
+    "1"
+   ]
+  },
+  {
+   "id": "ax_rebound",
+   "group": "Suspension",
+   "label": "Rebound damping",
+   "desc": "How much the shock slows the wheel coming back down. Stored as the square root of the ratio.",
+   "loc": "axle{a}",
+   "off": "0x140",
+   "type": "f32_sqrt",
+   "unit": "ratio",
+   "min": 0.01,
+   "max": 2,
+   "step": 0.01,
+   "stock_example": [
+    0.6,
+    0.5
+   ],
+   "apply": "live (raw ratio also kept at 0x144, not read)",
+   "risk": "Very high values keep the wheel off the ground after bumps (less grip).",
+   "source": "02-suspension.md 4/6; Wheel::Update 0x3320c8 (lwc1 0x140)",
+   "goals": {
+    "stability": "Up: body settles fast after bumps. Down: bouncy.",
+    "grip": "Up: controlled body until the wheels start to skip. Down: the body floats and grip comes and goes."
+   },
+   "goals_best": {
+    "stability": "up",
+    "grip": "balance"
+   },
+   "ends": {
+    "low": "Bouncy",
+    "high": "Controlled"
+   },
+   "proof": [
+    [
+     "0x3320c8",
+     "0x140"
+    ]
+   ],
+   "perAxle": [
+    "0",
+    "1"
+   ]
+  },
+  {
+   "id": "ax_ride_height",
+   "group": "Suspension",
+   "label": "Ride height",
+   "desc": "How high the wheel hangs below the body mount (m). The game added the static sag (+0.01 m) to the script value once at load, so the live number is about 0.05 m bigger than the script.",
+   "loc": "axle{a}",
+   "off": "0x14c",
+   "type": "f32",
+   "unit": "m",
+   "min": 0.0,
+   "max": 0.6,
+   "step": 0.005,
+   "stock_example": [
+    0.15,
+    0.15
+   ],
+   "apply": "poke, then call 0x273480(car, axle) to move the wheel mounts",
+   "risk": "Only re-placing the mounts (after) makes it take effect. Very low values bottom the body on the ground.",
+   "source": "02-suspension.md 5; read by wheel placement 0x27334c (lwc1 0x14c); stock_example is the script value (live ≈ +0.045 sag +0.01)",
+   "goals": {
+    "stability": "Up: more room over bumps and jumps. Down: hits the ground.",
+    "grip": "Up: body sits high, more roll. Down: lower and flatter."
+   },
+   "goals_best": {
+    "stability": "up",
+    "grip": "down"
+   },
+   "ends": {
+    "low": "Low",
+    "high": "High"
+   },
+   "proof": [
+    [
+     "0x27334c",
+     "0x14c"
+    ],
+    [
+     "0x279228",
+     "0x14c"
+    ]
+   ],
+   "perAxle": [
+    "0",
+    "1"
+   ],
+   "after": [
+    {
+     "call": "0x273480",
+     "args": [
+      "car",
+      "axle{a}"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ax_downforce",
+   "group": "Aero",
+   "label": "Downforce",
+   "desc": "Push-down force per axle: DOWNFORCE x speed² / (distance from axle to centre of mass). It is a real force pushing the body into the springs.",
+   "loc": "axle{a}",
+   "off": "0x160",
+   "type": "f32",
+   "unit": "N·s²/m",
+   "min": 0,
+   "max": 5,
+   "step": 0.05,
+   "stock_example": [
+    0.45,
+    0.55
+   ],
+   "apply": "live",
+   "risk": "Huge values crush the springs at speed (bottoming).",
+   "source": "02-suspension.md 7; Axle downforce 0x27678c (lwc1 0x160)",
+   "goals": {
+    "highway": "Up: steadier and more grip at high speed. Down: lighter and twitchy at speed.",
+    "grip": "Up: more grip in fast corners. Down: less.",
+    "drift": "Up (rear): rear sticks at speed, harder to slide. Down (rear): looser at speed."
+   },
+   "goals_best": {
+    "highway": "up",
+    "grip": "up",
+    "drift": "balance"
+   },
+   "ends": {
+    "low": "Light at speed",
+    "high": "Planted at speed"
+   },
+   "proof": [
+    [
+     "0x27678c",
+     "0x160"
+    ]
+   ],
+   "perAxle": [
+    "0",
+    "1"
+   ]
+  },
+  {
+   "id": "ax_drive_bias",
+   "group": "Chassis & mass",
+   "label": "Axle drive share",
+   "desc": "How much engine torque this axle gets (0 = none). Torque per axle = torque / sum of shares x this share. Giving the front axle 1 on a RWD car makes it 50/50 AWD (open front diff).",
+   "loc": "axle{a}",
+   "off": "0x16c",
+   "type": "f32",
+   "unit": "share",
+   "min": 0,
+   "max": 3,
+   "step": 0.05,
+   "stock_example": [
+    0,
+    1
+   ],
+   "apply": "live (also poke 0x170 to survive a reset; i4WD cars rewrite it every frame)",
+   "risk": "Both axles 0 = no drive.",
+   "source": "05-differential.md 3.5; AddDriveTorque 0x2766fc (lwc1 0x16c); reset copies from 0x170 (0x276294)",
+   "goals": {
+    "drift": "Up (rear): classic RWD slides. Down (rear, with front up): the car pulls straight.",
+    "launch": "Up (both): AWD launch. Down: one axle spins.",
+    "grip": "Up (front): stable exits. Down (front): more rotation."
+   },
+   "goals_best": {
+    "drift": "balance",
+    "launch": "up",
+    "grip": "balance"
+   },
+   "ends": {
+    "low": "Less drive",
+    "high": "More drive"
+   },
+   "proof": [
+    [
+     "0x2766fc",
+     "0x16c"
+    ],
+    [
+     "0x276294",
+     "0x170"
+    ]
+   ],
+   "perAxle": [
+    "0",
+    "1"
+   ]
+  },
+  {
+   "id": "ax_brake_enable",
+   "group": "Brakes",
+   "label": "Axle brake share",
+   "desc": "1 means this axle gets brakes, 0 means no brakes on this axle (BRAKE-TORQUE-ENABLED / BIAS).",
+   "loc": "axle{a}",
+   "off": "0x174",
+   "type": "f32",
+   "unit": "share",
+   "min": 0,
+   "max": 2,
+   "step": 0.05,
+   "stock_example": [
+    1,
+    1
+   ],
+   "apply": "live",
+   "risk": "None.",
+   "source": "02-suspension.md 6; read by the brake controller 0x32dd6c (lwc1 0x174)",
+   "goals": {
+    "stability": "Up: this axle helps stop. Down: no braking here."
+   },
+   "goals_best": {
+    "stability": "up"
+   },
+   "ends": {
+    "low": "No brakes",
+    "high": "Full brakes"
+   },
+   "proof": [
+    [
+     "0x32dd6c",
+     "0x174"
+    ]
+   ],
+   "perAxle": [
+    "0",
+    "1"
+   ]
+  },
+  {
+   "id": "ax_rollbar",
+   "group": "Anti-roll bars",
+   "label": "Axle roll stiffness",
+   "desc": "A simple roll bar built into the axle (ROLL-BAR-STIFFNESS); pushes the wheels together in roll. No disc car uses it (0).",
+   "loc": "axle{a}",
+   "off": "0x148",
+   "type": "f32",
+   "unit": "N/m",
+   "min": 0,
+   "max": 100000,
+   "step": 500,
+   "stock_example": [
+    0,
+    0
+   ],
+   "apply": "live",
+   "risk": "None found.",
+   "source": "02-suspension.md 6; Axle 0x276968 (lwc1 0x148)",
+   "goals": {
+    "grip": "Up: less roll, quicker response. Down: more grip on uneven ground.",
+    "drift": "Up (rear): looser rear. Down (rear): more rear grip."
+   },
+   "goals_best": {
+    "grip": "balance",
+    "drift": "balance"
+   },
+   "ends": {
+    "low": "Soft roll",
+    "high": "Stiff roll"
+   },
+   "proof": [
+    [
+     "0x276968",
+     "0x148"
+    ]
+   ],
+   "perAxle": [
+    "0",
+    "1"
+   ]
+  },
+  {
+   "id": "ax_anti_roll",
+   "group": "Suspension",
+   "label": "Anti-roll geometry",
+   "desc": "Fraction of the roll moment turned straight into wheel load (like real suspension geometry). 0 on race cars.",
+   "loc": "axle{a}",
+   "off": "0x158",
+   "type": "f32",
+   "unit": "fraction",
+   "min": 0,
+   "max": 1,
+   "step": 0.05,
+   "stock_example": [
+    0,
+    0
+   ],
+   "apply": "live",
+   "risk": "Values above 1 are unrealistic.",
+   "source": "02-suspension.md 9; Wheel2 0x296d40 (lwc1 0x158)",
+   "goals": {
+    "grip": "Up: less body roll. Down: more roll.",
+    "stability": "Up: flatter body. Down: more lean."
+   },
+   "goals_best": {
+    "grip": "balance",
+    "stability": "up"
+   },
+   "ends": {
+    "low": "More roll",
+    "high": "Less roll"
+   },
+   "proof": [
+    [
+     "0x296d40",
+     "0x158"
+    ]
+   ],
+   "perAxle": [
+    "0",
+    "1"
+   ]
+  },
+  {
+   "id": "ax_anti_pitch",
+   "group": "Suspension",
+   "label": "Anti-pitch geometry",
+   "desc": "Fraction of the dive/squat moment turned straight into wheel load. 0 on race cars.",
+   "loc": "axle{a}",
+   "off": "0x15c",
+   "type": "f32",
+   "unit": "fraction",
+   "min": 0,
+   "max": 1,
+   "step": 0.05,
+   "stock_example": [
+    0,
+    0
+   ],
+   "apply": "live",
+   "risk": "None.",
+   "source": "02-suspension.md 9; Wheel2 0x296d0c (lwc1 0x15c)",
+   "goals": {
+    "launch": "Up: less squat on launch. Down: more squat.",
+    "stability": "Up: less dive when braking. Down: more dive."
+   },
+   "goals_best": {
+    "launch": "balance",
+    "stability": "up"
+   },
+   "ends": {
+    "low": "More dive",
+    "high": "Less dive"
+   },
+   "proof": [
+    [
+     "0x296d0c",
+     "0x15c"
+    ]
+   ],
+   "perAxle": [
+    "0",
+    "1"
+   ]
+  },
+  {
+   "id": "ax_jounce",
+   "group": "Suspension",
+   "label": "Wheel draw limit",
+   "desc": "How far up the wheel is drawn (visual only, m above sag). It does not change the physics.",
+   "loc": "axle{a}",
+   "off": "0x154",
+   "type": "f32",
+   "unit": "m",
+   "min": 0,
+   "max": 0.5,
+   "step": 0.01,
+   "stock_example": [
+    0.15,
+    0.15
+   ],
+   "apply": "live (visual)",
+   "risk": "None.",
+   "source": "02-suspension.md 6; Wheel2 0x296ee4 (lwc1 0x154)",
+   "goals": {
+    "stability": "Up: wheels drawn higher, no handling change. Down: wheels drawn lower, no handling change."
+   },
+   "goals_best": {
+    "stability": "balance"
+   },
+   "ends": {
+    "low": "Wheels tucked",
+    "high": "Wheels free"
+   },
+   "proof": [
+    [
+     "0x296ee4",
+     "0x154"
+    ]
+   ],
+   "perAxle": [
+    "0",
+    "1"
+   ]
+  },
+  {
+   "id": "kin_camber",
+   "group": "Suspension",
+   "label": "Camber",
+   "desc": "Static wheel tilt (shown in degrees, stored in radians). The tyre maths uses camber in the lateral force (PDY3 reduces grip with camber², PHY3/PVY3 shift it).",
+   "loc": "kin{a}",
+   "off": "0x80",
+   "type": "f32_rad_as_deg",
+   "unit": "deg",
+   "min": -10,
+   "max": 5,
+   "step": 0.1,
+   "stock_example": [
+    -3.0,
+    -1.5
+   ],
+   "apply": "live",
+   "risk": "None found.",
+   "source": "02-suspension.md 8; Kinematics::Update 0x27d13c (lwc1 0x80)",
+   "goals": {
+    "grip": "Up (toward 0): less camber thrust. Down (more negative): more thrust until PDY3 cuts grip.",
+    "drift": "Up (rear toward 0): rear grips less. Down (more negative): rear holds."
+   },
+   "goals_best": {
+    "grip": "balance",
+    "drift": "balance"
+   },
+   "ends": {
+    "low": "More negative",
+    "high": "Less negative"
+   },
+   "proof": [
+    [
+     "0x27d13c",
+     "0x80"
+    ]
+   ],
+   "perAxle": [
+    "0",
+    "1"
+   ],
+   "vt": "0x565ce8"
+  },
+  {
+   "id": "kin_toe",
+   "group": "Suspension",
+   "label": "Toe",
+   "desc": "Static toe angle (degrees shown, radians stored), mirrored left/right. Added to the wheel angle every step.",
+   "loc": "kin{a}",
+   "off": "0x84",
+   "type": "f32_rad_as_deg",
+   "unit": "deg",
+   "min": -3,
+   "max": 3,
+   "step": 0.05,
+   "stock_example": [
+    0.0,
+    -0.1
+   ],
+   "apply": "live",
+   "risk": "Big values scrub speed and heat nothing (no heat model) but slow the car.",
+   "source": "02-suspension.md 8; Kinematics::Update 0x27d144 (lwc1 0x84)",
+   "goals": {
+    "stability": "Up (toe-in, rear): steadier straight line. Down (toe-out): twitchy.",
+    "grip": "Up (front toe-in): lazier turn-in. Down (toe-out): sharper turn-in.",
+    "highway": "Up (a little toe-in): stable at speed. Down (toe-out): wanders."
+   },
+   "goals_best": {
+    "stability": "balance",
+    "grip": "balance",
+    "highway": "balance"
+   },
+   "ends": {
+    "low": "Toe-out",
+    "high": "Toe-in"
+   },
+   "proof": [
+    [
+     "0x27d144",
+     "0x84"
+    ]
+   ],
+   "perAxle": [
+    "0",
+    "1"
+   ],
+   "vt": "0x565ce8"
+  },
+  {
+   "id": "arb_front",
+   "group": "Anti-roll bars",
+   "label": "Anti-roll bar (front)",
+   "desc": "Front roll bar strength (N/m). Force = k x (left travel - right travel), max 0.7 x k, moved between the two front tyres.",
+   "loc": "comp:583fc8[#0]",
+   "off": "0x74",
+   "type": "f32",
+   "unit": "N/m",
+   "min": 0,
+   "max": 200000,
+   "step": 500,
+   "stock_example": 25000,
+   "apply": "live (check +0x70 == 1 for FRONT, 2 for REAR before writing)",
+   "risk": "None found.",
+   "source": "02-suspension.md 9; AntiRollBar::Update 0x32fa50 (lwc1 0x74); FRONT/REAR flag +0x70 set at 0x32f940",
+   "goals": {
+    "grip": "Up: less roll but the front loses grip sooner (understeer). Down: more front grip.",
+    "drift": "Up: the front washes out and the car resists rotating. Down: the front bites so the car turns into slides.",
+    "stability": "Up: flatter, calmer body. Down: leans more."
+   },
+   "goals_best": {
+    "grip": "balance",
+    "drift": "down",
+    "stability": "up"
+   },
+   "ends": {
+    "low": "More front grip",
+    "high": "Less roll"
+   },
+   "proof": [
+    [
+     "0x32fa50",
+     "0x74"
+    ],
+    [
+     "0x32f940",
+     "0x70"
+    ]
+   ],
+   "vt": "0x583fc8",
+   "match": {
+    "off": "0x70",
+    "value": 1
+   }
+  },
+  {
+   "id": "arb_rear",
+   "group": "Anti-roll bars",
+   "label": "Anti-roll bar (rear)",
+   "desc": "Rear roll bar strength. A stiffer rear bar takes grip away from the rear in corners. The RX-7 TRS has no rear bar (component absent).",
+   "loc": "comp:583fc8[#1]",
+   "off": "0x74",
+   "type": "f32",
+   "unit": "N/m",
+   "min": 0,
+   "max": 200000,
+   "step": 500,
+   "stock_example": null,
+   "apply": "live (only if the car has a REAR bar; +0x70 == 2)",
+   "risk": "Missing on 25 cars (front only): the editor must skip it.",
+   "source": "02-suspension.md 9; AntiRollBar::Update 0x32fa50",
+   "goals": {
+    "drift": "Up: rear lets go more easily, easier to drift. Down: rear grips.",
+    "grip": "Up: more rotation. Down: more rear grip.",
+    "stability": "Up: tail-happy. Down: planted rear."
+   },
+   "goals_best": {
+    "drift": "up",
+    "grip": "balance",
+    "stability": "down"
+   },
+   "ends": {
+    "low": "Rear grips",
+    "high": "Rear slides"
+   },
+   "proof": [
+    [
+     "0x32fa50",
+     "0x74"
+    ],
+    [
+     "0x32f960",
+     "0x70"
+    ]
+   ],
+   "vt": "0x583fc8",
+   "match": {
+    "off": "0x70",
+    "value": 2
+   }
+  },
+  {
+   "id": "ty_lat_scale",
+   "group": "Tyres",
+   "label": "Side grip scale",
+   "desc": "Multiplies the tyre's peak side grip (Dy uses PDY1 x (this + side add-on)). The tyre upgrade raises it to 1.25.",
+   "loc": "tyre{a}{w}",
+   "off": "0x118",
+   "type": "f32",
+   "unit": "x",
+   "min": 0.2,
+   "max": 3,
+   "step": 0.01,
+   "stock_example": 1.0,
+   "apply": "live; Then force the cached Pacejka terms to refresh: poke 0 into tyre{a}{w}+0xe8 for all four tyres (one-shot), or set tyredata+0x58c to 1.",
+   "risk": "Very high values make the car flip in corners.",
+   "source": "03-tyre.md 2.5/2.9; fast Pacejka 0x28d040 (lwc1 0x118); written by TyreUpgrade/field init 0x28d8d8",
+   "goals": {
+    "grip": "Up: more cornering grip. Down: slides sooner.",
+    "drift": "Up (rear): harder to break traction. Down (rear): slides easily.",
+    "stability": "Up (rear): rear stays planted. Down: tail steps out.",
+    "highway": "Up: steadier lane changes. Down: twitchy."
+   },
+   "goals_best": {
+    "grip": "up",
+    "drift": "down",
+    "stability": "up",
+    "highway": "up"
+   },
+   "ends": {
+    "low": "More slide",
+    "high": "More grip"
+   },
+   "proof": [
+    [
+     "0x28d040",
+     "0x118"
+    ],
+    [
+     "0x28d8d8",
+     "0x118"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x584418"
+  },
+  {
+   "id": "ty_lat_add",
+   "group": "Tyres",
+   "label": "Side grip add-on (DRIFT-PHYSICS)",
+   "desc": "Added to the side grip scale. DRIFT-PHYSICS sets it to 0.4 x drift value when the tyres are configured, on the front tyres only (wheel mount z, wheel+0x2d0, > 0).",
+   "loc": "tyre{a}{w}",
+   "off": "0x114",
+   "type": "f32",
+   "unit": "x",
+   "min": 0,
+   "max": 2,
+   "step": 0.01,
+   "stock_example": 0,
+   "apply": "live; Then force the cached Pacejka terms to refresh: poke 0 into tyre{a}{w}+0xe8 for all four tyres (one-shot), or set tyredata+0x58c to 1. Note: the chassis Configure pass (0x27fe60, run when Driving Assist or DRIFT-PHYSICS is changed, and by any 'after' call to 0x27fe60) rewrites this field to its code default.",
+   "risk": "Same as side grip scale.",
+   "source": "03-tyre.md 2.9; fast Pacejka 0x28d038 (lwc1 0x114); RaceCarTyre Configure 0x33023c",
+   "goals": {
+    "grip": "Up: more side grip. Down: less.",
+    "drift": "Up: grippier slides at high angle. Down: looser slides."
+   },
+   "goals_best": {
+    "grip": "up",
+    "drift": "balance"
+   },
+   "ends": {
+    "low": "Less side grip",
+    "high": "More side grip"
+   },
+   "proof": [
+    [
+     "0x28d038",
+     "0x114"
+    ],
+    [
+     "0x33023c",
+     "0x114"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x584418"
+  },
+  {
+   "id": "ty_long_scale",
+   "group": "Tyres",
+   "label": "Forward grip scale",
+   "desc": "Multiplies the tyre's peak pulling/braking grip (PDX1 x this).",
+   "loc": "tyre{a}{w}",
+   "off": "0x11c",
+   "type": "f32",
+   "unit": "x",
+   "min": 0.2,
+   "max": 3,
+   "step": 0.01,
+   "stock_example": 1.0,
+   "apply": "live; Then force the cached Pacejka terms to refresh: poke 0 into tyre{a}{w}+0xe8 for all four tyres (one-shot), or set tyredata+0x58c to 1.",
+   "risk": "Very high rear values plus big torque can trigger the wheel-spin hang less, but very low values make wheels spin freely forever (spin clamp 1000 rad/s).",
+   "source": "03-tyre.md 2.5; fast Pacejka 0x28cf7c (lwc1 0x11c)",
+   "goals": {
+    "launch": "Up: less wheelspin off the line. Down: more wheelspin.",
+    "drag": "Up: puts power down. Down: spins.",
+    "drift": "Up (rear): hard to spin the rears. Down (rear): easy power slides.",
+    "stability": "Up: shorter braking. Down: locks and slides."
+   },
+   "goals_best": {
+    "launch": "up",
+    "drag": "up",
+    "drift": "down",
+    "stability": "up"
+   },
+   "ends": {
+    "low": "Wheelspin",
+    "high": "Traction"
+   },
+   "proof": [
+    [
+     "0x28cf7c",
+     "0x11c"
+    ],
+    [
+     "0x28d8a0",
+     "0x11c"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x584418"
+  },
+  {
+   "id": "ty_fz_filter_up",
+   "group": "Tyres",
+   "label": "Load smoothing (rising)",
+   "desc": "The tyre load is filtered: new = k x old + (1-k) x now. Higher k smooths load changes more (slower reaction to weight transfer).",
+   "loc": "tyre{a}{w}",
+   "off": "0x1ac",
+   "type": "f32",
+   "unit": "k",
+   "min": 0,
+   "max": 0.99,
+   "step": 0.01,
+   "stock_example": 0.9,
+   "apply": "live. Note: the chassis Configure pass (0x27fe60, run when Driving Assist or DRIFT-PHYSICS is changed, and by any 'after' call to 0x27fe60) rewrites this field to its code default.",
+   "risk": "Exactly 1.0 freezes the load forever (the car would keep its spawn grip).",
+   "source": "03-tyre.md 2.8; slip limiter 0x330aa8 (lwc1 0x1ac); Configure 0x330200",
+   "goals": {
+    "stability": "Up: calmer over bumps. Down: grip reacts instantly.",
+    "grip": "Up: slow to load up in corners. Down: sharp response."
+   },
+   "goals_best": {
+    "stability": "up",
+    "grip": "down"
+   },
+   "ends": {
+    "low": "Instant",
+    "high": "Smoothed"
+   },
+   "proof": [
+    [
+     "0x330aa8",
+     "0x1ac"
+    ],
+    [
+     "0x330200",
+     "0x1ac"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x584418"
+  },
+  {
+   "id": "ty_fz_filter_down",
+   "group": "Tyres",
+   "label": "Load smoothing (falling)",
+   "desc": "Same filter used when the load is dropping.",
+   "loc": "tyre{a}{w}",
+   "off": "0x1b0",
+   "type": "f32",
+   "unit": "k",
+   "min": 0,
+   "max": 0.99,
+   "step": 0.01,
+   "stock_example": 0.9,
+   "apply": "live. Note: the chassis Configure pass (0x27fe60, run when Driving Assist or DRIFT-PHYSICS is changed, and by any 'after' call to 0x27fe60) rewrites this field to its code default.",
+   "risk": "Exactly 1.0 freezes the load.",
+   "source": "03-tyre.md 2.8; slip limiter 0x330aa4 (lwc1 0x1b0); Configure 0x3301fc",
+   "goals": {
+    "stability": "Up: grip stays after bumps/crests. Down: grip drops instantly when unloaded.",
+    "drift": "Up: smoother transitions. Down: snappier transitions."
+   },
+   "goals_best": {
+    "stability": "up",
+    "drift": "balance"
+   },
+   "ends": {
+    "low": "Instant",
+    "high": "Smoothed"
+   },
+   "proof": [
+    [
+     "0x330aa4",
+     "0x1b0"
+    ],
+    [
+     "0x3301fc",
+     "0x1b0"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x584418"
+  },
+  {
+   "id": "ty_spin_gain",
+   "group": "Tyres",
+   "label": "Wheel spin filter gain",
+   "desc": "Extra gain on the wheel spin acceleration filter: f = (0.12 + 4.4 x this) x accel + 0.18 x f1 + 0.70 x f2 (the taps are code immediates).",
+   "loc": "tyre{a}{w}",
+   "off": "0x1e0",
+   "type": "f32",
+   "unit": "",
+   "min": 0,
+   "max": 0.2,
+   "step": 0.005,
+   "stock_example": 0,
+   "apply": "live",
+   "risk": "Raising it can make wheel speed oscillate and trigger the known wheel-spin hang. Keep small.",
+   "source": "03-tyre.md 2.6; spin integrator 0x330464 (lwc1 0x1e0)",
+   "goals": {
+    "launch": "Up: wheels react faster but can jitter. Down: smooth wheel speed."
+   },
+   "goals_best": {
+    "launch": "down"
+   },
+   "ends": {
+    "low": "Smooth",
+    "high": "Fast (risky)"
+   },
+   "proof": [
+    [
+     "0x330464",
+     "0x1e0"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x584418"
+  },
+  {
+   "id": "ty_spin_react",
+   "group": "Tyres",
+   "label": "Spin feedback at speed",
+   "desc": "How much of the tyre force pushes back on the wheel at high speed (type-1 default 0.8, above the speed below).",
+   "loc": "tyre{a}{w}",
+   "off": "0x1b8",
+   "type": "f32",
+   "unit": "x",
+   "min": 0.1,
+   "max": 1.5,
+   "step": 0.05,
+   "stock_example": 0.8,
+   "apply": "live. Note: the chassis Configure pass (0x27fe60, run when Driving Assist or DRIFT-PHYSICS is changed, and by any 'after' call to 0x27fe60) rewrites this field to its code default.",
+   "risk": "Below about 0.1 wheels can spin up without limit.",
+   "source": "03-tyre.md 2.5; spin 0x330350 (lwc1 0x1b8)",
+   "goals": {
+    "highway": "Up: steady wheel speed. Down: more wheelspin at speed.",
+    "drift": "Up: wheels hook up. Down: easier to keep spinning."
+   },
+   "goals_best": {
+    "highway": "balance",
+    "drift": "down"
+   },
+   "ends": {
+    "low": "Spins easier",
+    "high": "Hooks up"
+   },
+   "proof": [
+    [
+     "0x330350",
+     "0x1b8"
+    ],
+    [
+     "0x3301f0",
+     "0x1b8"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x584418"
+  },
+  {
+   "id": "ty_fz0",
+   "group": "Tyres",
+   "label": "Tyre reference load",
+   "desc": "The tyre load (N) the Pacejka numbers are built around (FZ0). Grip and stiffness change with (load - FZ0)/FZ0.",
+   "loc": "tyredata{a}{w}",
+   "off": "0x70",
+   "type": "f32",
+   "unit": "N",
+   "min": 1000,
+   "max": 10000,
+   "step": 50,
+   "stock_example": 3500,
+   "apply": "live; Then force the cached Pacejka terms to refresh: poke 0 into tyre{a}{w}+0xe8 for all four tyres (one-shot), or set tyredata+0x58c to 1. Also rebuild the peak-slip tables: call 0x28fab8(tyredata).",
+   "risk": "The tyre model object is shared by every wheel (and every car) that uses the same WHEEL name: on the RX-7 TRS all four wheels use \"97RX7TRSR-FRONT\", so one edit changes all four, and also AI cars of the same model. Never 0 (divides).",
+   "source": "03-tyre.md 2.4; fast Pacejka 0x28cf04 (lwc1 0x70)",
+   "goals": {
+    "grip": "Up: the tyre feels stiffer and less load-sensitive. Down: grip falls off faster with load."
+   },
+   "goals_best": {
+    "grip": "balance"
+   },
+   "ends": {
+    "low": "Load-sensitive",
+    "high": "Load-tolerant"
+   },
+   "proof": [
+    [
+     "0x28cf04",
+     "0x70"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x569fd8",
+   "after": [
+    {
+     "call": "0x28fab8",
+     "args": [
+      "tyredata{a}{w}"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ty_fzmax",
+   "group": "Tyres",
+   "label": "Tyre max load",
+   "desc": "Loads above this (N) are clamped in the force maths (FZMAX).",
+   "loc": "tyredata{a}{w}",
+   "off": "0x74",
+   "type": "f32",
+   "unit": "N",
+   "min": 2000,
+   "max": 30000,
+   "step": 100,
+   "stock_example": 9000,
+   "apply": "live; also rebuild peak tables (0x28fab8)",
+   "risk": "The tyre model object is shared by every wheel (and every car) that uses the same WHEEL name: on the RX-7 TRS all four wheels use \"97RX7TRSR-FRONT\", so one edit changes all four, and also AI cars of the same model.",
+   "source": "03-tyre.md 2.4; fast Pacejka 0x28ce6c (lwc1 0x74)",
+   "goals": {
+    "highway": "Up: grip keeps growing with downforce. Down: grip caps out.",
+    "stability": "Up: big loads (landings) still grip. Down: grip capped."
+   },
+   "goals_best": {
+    "highway": "up",
+    "stability": "up"
+   },
+   "ends": {
+    "low": "Capped",
+    "high": "Uncapped"
+   },
+   "proof": [
+    [
+     "0x28ce6c",
+     "0x74"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x569fd8",
+   "after": [
+    {
+     "call": "0x28fab8",
+     "args": [
+      "tyredata{a}{w}"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ty_mul_brake",
+   "group": "Tyres",
+   "label": "Arcade braking grip",
+   "desc": "Braking tyre force is multiplied by this (code default 1.2 for this game mode). It is a data field in the tyre model, set by the model defaults 0x28f9b0.",
+   "loc": "tyredata{a}{w}",
+   "off": "0x78",
+   "type": "f32",
+   "unit": "x",
+   "min": 0.2,
+   "max": 4,
+   "step": 0.05,
+   "stock_example": 1.2,
+   "apply": "live",
+   "risk": "The tyre model object is shared by every wheel (and every car) that uses the same WHEEL name: on the RX-7 TRS all four wheels use \"97RX7TRSR-FRONT\", so one edit changes all four, and also AI cars of the same model. Very high values can flip the car.",
+   "source": "03-tyre.md 2.3; fast Pacejka 0x28cbec",
+   "goals": {
+    "stability": "Up: shorter stops. Down: longer stops.",
+    "grip": "Up: brake later. Down: brake earlier."
+   },
+   "goals_best": {
+    "stability": "up",
+    "grip": "up"
+   },
+   "ends": {
+    "low": "Long stops",
+    "high": "Short stops"
+   },
+   "proof": [
+    [
+     "0x28cbec",
+     "0x78"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x569fd8"
+  },
+  {
+   "id": "ty_mul_traction",
+   "group": "Tyres",
+   "label": "Arcade traction grip",
+   "desc": "Pulling (traction) tyre force is multiplied by this (default 1.2). It is a data field in the tyre model, set by the model defaults 0x28f9b0.",
+   "loc": "tyredata{a}{w}",
+   "off": "0x7c",
+   "type": "f32",
+   "unit": "x",
+   "min": 0.2,
+   "max": 4,
+   "step": 0.05,
+   "stock_example": 1.2,
+   "apply": "live",
+   "risk": "The tyre model object is shared by every wheel (and every car) that uses the same WHEEL name: on the RX-7 TRS all four wheels use \"97RX7TRSR-FRONT\", so one edit changes all four, and also AI cars of the same model. Very high values can flip the car.",
+   "source": "03-tyre.md 2.3; fast Pacejka 0x28cbf0",
+   "goals": {
+    "launch": "Up: less wheelspin. Down: more wheelspin.",
+    "drag": "Up: more forward bite. Down: less.",
+    "drift": "Up (rear): hard to power-slide. Down: easy power-slides."
+   },
+   "goals_best": {
+    "launch": "up",
+    "drag": "up",
+    "drift": "down"
+   },
+   "ends": {
+    "low": "Wheelspin",
+    "high": "Traction"
+   },
+   "proof": [
+    [
+     "0x28cbf0",
+     "0x7c"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x569fd8"
+  },
+  {
+   "id": "ty_mul_lateral",
+   "group": "Tyres",
+   "label": "Arcade side grip",
+   "desc": "Side force is multiplied by this (default 2.0). This is why the cars have about 3.3 g of peak side grip. It is a data field in the tyre model, set by the model defaults 0x28f9b0.",
+   "loc": "tyredata{a}{w}",
+   "off": "0x80",
+   "type": "f32",
+   "unit": "x",
+   "min": 0.2,
+   "max": 4,
+   "step": 0.05,
+   "stock_example": 2.0,
+   "apply": "live",
+   "risk": "The tyre model object is shared by every wheel (and every car) that uses the same WHEEL name: on the RX-7 TRS all four wheels use \"97RX7TRSR-FRONT\", so one edit changes all four, and also AI cars of the same model. Very high values can flip the car.",
+   "source": "03-tyre.md 2.3; fast Pacejka 0x28cc64, 0x28cc7c",
+   "goals": {
+    "grip": "Up: much more cornering grip. Down: realistic, slidey.",
+    "drift": "Up: very hard to slide. Down: slides easily.",
+    "stability": "Up: hard to spin. Down: spins easily.",
+    "highway": "Up: steady. Down: twitchy."
+   },
+   "goals_best": {
+    "grip": "up",
+    "drift": "down",
+    "stability": "up",
+    "highway": "up"
+   },
+   "ends": {
+    "low": "Slidey",
+    "high": "Grippy"
+   },
+   "proof": [
+    [
+     "0x28cc64",
+     "0x80"
+    ],
+    [
+     "0x28cc7c",
+     "0x80"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x569fd8"
+  },
+  {
+   "id": "ty_lim_angle_hi",
+   "group": "Tyres",
+   "label": "Slip angle limit",
+   "desc": "Hard clamp on slip angle, in multiples of the tyre's peak slip angle. Above 37 m/s the clamp is exactly this. Limit = base + (high-speed value - base) x (1 + 10 x blend), blend = 1 - speed/37.4 m/s (0 above 37.4 m/s); with the handbrake over 10% the limits also grow by 1/(1-h)^2. Read by the RaceCarTyre slip limiter through tyre+0x104.",
+   "loc": "tyredata{a}{w}",
+   "off": "0x64",
+   "type": "f32",
+   "unit": "x peak slip",
+   "min": 0.5,
+   "max": 50,
+   "step": 0.05,
+   "stock_example": 5.0,
+   "apply": "live",
+   "risk": "The tyre model object is shared by every wheel (and every car) that uses the same WHEEL name: on the RX-7 TRS all four wheels use \"97RX7TRSR-FRONT\", so one edit changes all four, and also AI cars of the same model. Values below about 0.5 for the limits can pin the slip at the clamp (stuck wheel); softening above 1 exaggerates falloff.",
+   "source": "03-tyre.md 2.3/2.8; 0x3309b0 reads model via tyre+0x104 (0x330b04, 0x330bf4)",
+   "goals": {
+    "drift": "Up: deeper slip angles are allowed so big drifts survive. Down: slip is clamped near the peak and the car grips up.",
+    "grip": "Up: tyres can go far past their peak. Down: tyres are held near their best angle."
+   },
+   "goals_best": {
+    "drift": "up",
+    "grip": "down"
+   },
+   "ends": {
+    "low": "Held near peak",
+    "high": "Free to slide"
+   },
+   "proof": [
+    [
+     "0x330ba4",
+     "0x64"
+    ],
+    [
+     "0x330b04",
+     "0x104"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x569fd8"
+  },
+  {
+   "id": "ty_lim_angle_lo",
+   "group": "Tyres",
+   "label": "Slip angle limit base",
+   "desc": "Base of the slip-angle clamp; at low speed the clamp grows to 11 x high-speed value - 10 x this, so raising this TIGHTENS the low-speed clamp. Limit = base + (high-speed value - base) x (1 + 10 x blend), blend = 1 - speed/37.4 m/s (0 above 37.4 m/s); with the handbrake over 10% the limits also grow by 1/(1-h)^2. Read by the RaceCarTyre slip limiter through tyre+0x104.",
+   "loc": "tyredata{a}{w}",
+   "off": "0x58",
+   "type": "f32",
+   "unit": "x peak slip",
+   "min": 0.5,
+   "max": 50,
+   "step": 0.05,
+   "stock_example": 1.25,
+   "apply": "live",
+   "risk": "The tyre model object is shared by every wheel (and every car) that uses the same WHEEL name: on the RX-7 TRS all four wheels use \"97RX7TRSR-FRONT\", so one edit changes all four, and also AI cars of the same model. Values below about 0.5 for the limits can pin the slip at the clamp (stuck wheel); softening above 1 exaggerates falloff.",
+   "source": "03-tyre.md 2.3/2.8; 0x3309b0 reads model via tyre+0x104 (0x330b04, 0x330bf4)",
+   "goals": {
+    "drift": "Up: tighter angle clamp at low speed. Down: huge low-speed angles."
+   },
+   "goals_best": {
+    "drift": "down"
+   },
+   "ends": {
+    "low": "Loose at low speed",
+    "high": "Tight at low speed"
+   },
+   "proof": [
+    [
+     "0x330b84",
+     "0x58"
+    ],
+    [
+     "0x330b04",
+     "0x104"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x569fd8"
+  },
+  {
+   "id": "ty_lim_trac_hi",
+   "group": "Tyres",
+   "label": "Wheelspin limit",
+   "desc": "Hard clamp on wheelspin slip in multiples of the peak slip; exactly this above 37 m/s. Limit = base + (high-speed value - base) x (1 + 10 x blend), blend = 1 - speed/37.4 m/s (0 above 37.4 m/s); with the handbrake over 10% the limits also grow by 1/(1-h)^2. Read by the RaceCarTyre slip limiter through tyre+0x104.",
+   "loc": "tyredata{a}{w}",
+   "off": "0x68",
+   "type": "f32",
+   "unit": "x peak slip",
+   "min": 0.5,
+   "max": 50,
+   "step": 0.05,
+   "stock_example": 2.0,
+   "apply": "live",
+   "risk": "The tyre model object is shared by every wheel (and every car) that uses the same WHEEL name: on the RX-7 TRS all four wheels use \"97RX7TRSR-FRONT\", so one edit changes all four, and also AI cars of the same model. Values below about 0.5 for the limits can pin the slip at the clamp (stuck wheel); softening above 1 exaggerates falloff.",
+   "source": "03-tyre.md 2.3/2.8; 0x3309b0 reads model via tyre+0x104 (0x330b04, 0x330bf4)",
+   "goals": {
+    "drift": "Up: rear wheels can spin far past grip. Down: wheelspin capped near peak traction.",
+    "launch": "Up: more wheelspin. Down: spin capped near best traction.",
+    "drag": "Up: power lost to wheelspin. Down: power goes to the road."
+   },
+   "goals_best": {
+    "drift": "up",
+    "launch": "down",
+    "drag": "down"
+   },
+   "ends": {
+    "low": "Spin capped",
+    "high": "Free wheelspin"
+   },
+   "proof": [
+    [
+     "0x330ba8",
+     "0x68"
+    ],
+    [
+     "0x330b04",
+     "0x104"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x569fd8"
+  },
+  {
+   "id": "ty_lim_trac_lo",
+   "group": "Tyres",
+   "label": "Wheelspin limit base",
+   "desc": "Base of the wheelspin clamp; raising it TIGHTENS the low-speed clamp (11 x high - 10 x base). Limit = base + (high-speed value - base) x (1 + 10 x blend), blend = 1 - speed/37.4 m/s (0 above 37.4 m/s); with the handbrake over 10% the limits also grow by 1/(1-h)^2. Read by the RaceCarTyre slip limiter through tyre+0x104.",
+   "loc": "tyredata{a}{w}",
+   "off": "0x5c",
+   "type": "f32",
+   "unit": "x peak slip",
+   "min": 0.5,
+   "max": 50,
+   "step": 0.05,
+   "stock_example": 1.0,
+   "apply": "live",
+   "risk": "The tyre model object is shared by every wheel (and every car) that uses the same WHEEL name: on the RX-7 TRS all four wheels use \"97RX7TRSR-FRONT\", so one edit changes all four, and also AI cars of the same model. Values below about 0.5 for the limits can pin the slip at the clamp (stuck wheel); softening above 1 exaggerates falloff.",
+   "source": "03-tyre.md 2.3/2.8; 0x3309b0 reads model via tyre+0x104 (0x330b04, 0x330bf4)",
+   "goals": {
+    "launch": "Up: less wheelspin from a stop. Down: more."
+   },
+   "goals_best": {
+    "launch": "up"
+   },
+   "ends": {
+    "low": "Loose at low speed",
+    "high": "Tight at low speed"
+   },
+   "proof": [
+    [
+     "0x330b88",
+     "0x5c"
+    ],
+    [
+     "0x330b04",
+     "0x104"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x569fd8"
+  },
+  {
+   "id": "ty_lim_brake_hi",
+   "group": "Tyres",
+   "label": "Lock-up limit",
+   "desc": "Hard clamp on braking slip (lock-up) in multiples of the peak slip; exactly this above 37 m/s. Limit = base + (high-speed value - base) x (1 + 10 x blend), blend = 1 - speed/37.4 m/s (0 above 37.4 m/s); with the handbrake over 10% the limits also grow by 1/(1-h)^2. Read by the RaceCarTyre slip limiter through tyre+0x104.",
+   "loc": "tyredata{a}{w}",
+   "off": "0x6c",
+   "type": "f32",
+   "unit": "x peak slip",
+   "min": 0.5,
+   "max": 50,
+   "step": 0.05,
+   "stock_example": 1.5,
+   "apply": "live",
+   "risk": "The tyre model object is shared by every wheel (and every car) that uses the same WHEEL name: on the RX-7 TRS all four wheels use \"97RX7TRSR-FRONT\", so one edit changes all four, and also AI cars of the same model. Values below about 0.5 for the limits can pin the slip at the clamp (stuck wheel); softening above 1 exaggerates falloff.",
+   "source": "03-tyre.md 2.3/2.8; 0x3309b0 reads model via tyre+0x104 (0x330b04, 0x330bf4)",
+   "goals": {
+    "stability": "Up: wheels can lock and slide. Down: lock-up limited, like ABS."
+   },
+   "goals_best": {
+    "stability": "down"
+   },
+   "ends": {
+    "low": "ABS-like",
+    "high": "Can lock"
+   },
+   "proof": [
+    [
+     "0x330b90",
+     "0x6c"
+    ],
+    [
+     "0x330b04",
+     "0x104"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x569fd8"
+  },
+  {
+   "id": "ty_lim_brake_lo",
+   "group": "Tyres",
+   "label": "Lock-up limit base",
+   "desc": "Base of the lock-up clamp; raising it TIGHTENS the low-speed clamp. Limit = base + (high-speed value - base) x (1 + 10 x blend), blend = 1 - speed/37.4 m/s (0 above 37.4 m/s); with the handbrake over 10% the limits also grow by 1/(1-h)^2. Read by the RaceCarTyre slip limiter through tyre+0x104.",
+   "loc": "tyredata{a}{w}",
+   "off": "0x60",
+   "type": "f32",
+   "unit": "x peak slip",
+   "min": 0.5,
+   "max": 50,
+   "step": 0.05,
+   "stock_example": 1.0,
+   "apply": "live",
+   "risk": "The tyre model object is shared by every wheel (and every car) that uses the same WHEEL name: on the RX-7 TRS all four wheels use \"97RX7TRSR-FRONT\", so one edit changes all four, and also AI cars of the same model. Values below about 0.5 for the limits can pin the slip at the clamp (stuck wheel); softening above 1 exaggerates falloff.",
+   "source": "03-tyre.md 2.3/2.8; 0x3309b0 reads model via tyre+0x104 (0x330b04, 0x330bf4)",
+   "goals": {
+    "stability": "Up: less lock-up at low speed. Down: more."
+   },
+   "goals_best": {
+    "stability": "up"
+   },
+   "ends": {
+    "low": "Loose at low speed",
+    "high": "Tight at low speed"
+   },
+   "proof": [
+    [
+     "0x330b8c",
+     "0x60"
+    ],
+    [
+     "0x330b04",
+     "0x104"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x569fd8"
+  },
+  {
+   "id": "ty_soft_angle",
+   "group": "Tyres",
+   "label": "Slide softening (angle)",
+   "desc": "Slip angle past the peak is multiplied by this before the force maths (game mode uses this MAX-SLIP-ANGLE-SCALE end). Below 1 the tyre acts as if it were nearer its peak, so slides keep more grip. Limit = base + (high-speed value - base) x (1 + 10 x blend), blend = 1 - speed/37.4 m/s (0 above 37.4 m/s); with the handbrake over 10% the limits also grow by 1/(1-h)^2. Read by the RaceCarTyre slip limiter through tyre+0x104.",
+   "loc": "tyredata{a}{w}",
+   "off": "0x4c",
+   "type": "f32",
+   "unit": "x",
+   "min": 0.05,
+   "max": 3,
+   "step": 0.05,
+   "stock_example": 1.0,
+   "apply": "live",
+   "risk": "The tyre model object is shared by every wheel (and every car) that uses the same WHEEL name: on the RX-7 TRS all four wheels use \"97RX7TRSR-FRONT\", so one edit changes all four, and also AI cars of the same model. Values below about 0.5 for the limits can pin the slip at the clamp (stuck wheel); softening above 1 exaggerates falloff.",
+   "source": "03-tyre.md 2.3/2.8; 0x3309b0 reads model via tyre+0x104 (0x330b04, 0x330bf4)",
+   "goals": {
+    "drift": "Up: past-peak slides lose grip like stock. Down: slides keep near-peak grip, easy to hold.",
+    "grip": "Up: grip falls off past the peak. Down: forgiving.",
+    "stability": "Up: snappy breakaway. Down: forgiving breakaway."
+   },
+   "goals_best": {
+    "drift": "down",
+    "grip": "down",
+    "stability": "down"
+   },
+   "ends": {
+    "low": "Forgiving slides",
+    "high": "Stock falloff"
+   },
+   "proof": [
+    [
+     "0x330c08",
+     "0x4c"
+    ],
+    [
+     "0x330b04",
+     "0x104"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x569fd8"
+  },
+  {
+   "id": "ty_soft_trac",
+   "group": "Tyres",
+   "label": "Slide softening (wheelspin)",
+   "desc": "Wheelspin slip past the peak is multiplied by this (MAX-SLIP-TRACTION-SCALE). Limit = base + (high-speed value - base) x (1 + 10 x blend), blend = 1 - speed/37.4 m/s (0 above 37.4 m/s); with the handbrake over 10% the limits also grow by 1/(1-h)^2. Read by the RaceCarTyre slip limiter through tyre+0x104.",
+   "loc": "tyredata{a}{w}",
+   "off": "0x50",
+   "type": "f32",
+   "unit": "x",
+   "min": 0.05,
+   "max": 3,
+   "step": 0.05,
+   "stock_example": 1.0,
+   "apply": "live",
+   "risk": "The tyre model object is shared by every wheel (and every car) that uses the same WHEEL name: on the RX-7 TRS all four wheels use \"97RX7TRSR-FRONT\", so one edit changes all four, and also AI cars of the same model. Values below about 0.5 for the limits can pin the slip at the clamp (stuck wheel); softening above 1 exaggerates falloff.",
+   "source": "03-tyre.md 2.3/2.8; 0x3309b0 reads model via tyre+0x104 (0x330b04, 0x330bf4)",
+   "goals": {
+    "launch": "Up: wheelspin loses traction. Down: spinning tyres still pull hard.",
+    "drift": "Up: spinning rears lose forward bite. Down: power slides keep pulling."
+   },
+   "goals_best": {
+    "launch": "down",
+    "drift": "down"
+   },
+   "ends": {
+    "low": "Spin still pulls",
+    "high": "Stock falloff"
+   },
+   "proof": [
+    [
+     "0x330c0c",
+     "0x50"
+    ],
+    [
+     "0x330b04",
+     "0x104"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x569fd8"
+  },
+  {
+   "id": "ty_soft_brake",
+   "group": "Tyres",
+   "label": "Slide softening (braking)",
+   "desc": "Lock-up slip past the peak is multiplied by this (MAX-SLIP-BRAKING-SCALE). Limit = base + (high-speed value - base) x (1 + 10 x blend), blend = 1 - speed/37.4 m/s (0 above 37.4 m/s); with the handbrake over 10% the limits also grow by 1/(1-h)^2. Read by the RaceCarTyre slip limiter through tyre+0x104.",
+   "loc": "tyredata{a}{w}",
+   "off": "0x54",
+   "type": "f32",
+   "unit": "x",
+   "min": 0.05,
+   "max": 3,
+   "step": 0.05,
+   "stock_example": 1.0,
+   "apply": "live",
+   "risk": "The tyre model object is shared by every wheel (and every car) that uses the same WHEEL name: on the RX-7 TRS all four wheels use \"97RX7TRSR-FRONT\", so one edit changes all four, and also AI cars of the same model. Values below about 0.5 for the limits can pin the slip at the clamp (stuck wheel); softening above 1 exaggerates falloff.",
+   "source": "03-tyre.md 2.3/2.8; 0x3309b0 reads model via tyre+0x104 (0x330b04, 0x330bf4)",
+   "goals": {
+    "stability": "Up: locked wheels lose grip. Down: locked wheels still stop hard."
+   },
+   "goals_best": {
+    "stability": "down"
+   },
+   "ends": {
+    "low": "Lock-up still stops",
+    "high": "Stock falloff"
+   },
+   "proof": [
+    [
+     "0x330c04",
+     "0x54"
+    ],
+    [
+     "0x330b04",
+     "0x104"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x569fd8"
+  },
+  {
+   "id": "ty_radius",
+   "group": "Tyres",
+   "label": "Wheel radius",
+   "desc": "Rolling radius of the tyre (m). Changes gearing (speed per rpm), the ray-cast length and ride height.",
+   "loc": "tyredata{a}{w}",
+   "off": "0x578",
+   "type": "f32",
+   "unit": "m",
+   "min": 0.2,
+   "max": 0.6,
+   "step": 0.002,
+   "stock_example": 0.316,
+   "apply": "live",
+   "risk": "The tyre model object is shared by every wheel (and every car) that uses the same WHEEL name: on the RX-7 TRS all four wheels use \"97RX7TRSR-FRONT\", so one edit changes all four, and also AI cars of the same model. Changing it changes the body height a lot; never 0 (spin maths divide by radius, 0x28df44).",
+   "source": "03-tyre.md 2.3; read in Tyre 0x28ea74 / 0x28df44 (lwc1 0x578) and Wheel::Update",
+   "goals": {
+    "highway": "Up: taller gearing, higher top speed. Down: lower top speed.",
+    "drag": "Up: slower acceleration. Down: quicker acceleration.",
+    "launch": "Up: softer launch. Down: punchier launch."
+   },
+   "goals_best": {
+    "highway": "up",
+    "drag": "down",
+    "launch": "down"
+   },
+   "ends": {
+    "low": "Short gearing",
+    "high": "Tall gearing"
+   },
+   "proof": [
+    [
+     "0x28ea74",
+     "0x578"
+    ],
+    [
+     "0x28df44",
+     "0x578"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x569fd8"
+  },
+  {
+   "id": "ty_inertia",
+   "group": "Tyres",
+   "label": "Wheel spin inertia",
+   "desc": "How hard the wheel is to spin up or slow down (kg·m²).",
+   "loc": "tyredata{a}{w}",
+   "off": "0x54c",
+   "type": "f32",
+   "unit": "kg·m²",
+   "min": 0.3,
+   "max": 10,
+   "step": 0.1,
+   "stock_example": 2.0,
+   "apply": "live",
+   "risk": "The tyre model object is shared by every wheel (and every car) that uses the same WHEEL name: on the RX-7 TRS all four wheels use \"97RX7TRSR-FRONT\", so one edit changes all four, and also AI cars of the same model. Very low values (< 0.3) make wheel speed jump and can trigger the known wheel-spin hang.",
+   "source": "03-tyre.md 2.3/2.6; Tyre::Update 0x28ea58 (lwc1 0x54c)",
+   "goals": {
+    "launch": "Up: wheels spin up slower, less flare. Down: instant wheelspin.",
+    "drift": "Up: rear wheels lazy to spin. Down: quick to break loose.",
+    "stability": "Up: steadier under braking. Down: quick lock-ups."
+   },
+   "goals_best": {
+    "launch": "up",
+    "drift": "down",
+    "stability": "up"
+   },
+   "ends": {
+    "low": "Light wheels",
+    "high": "Heavy wheels"
+   },
+   "proof": [
+    [
+     "0x28ea58",
+     "0x54c"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x569fd8"
+  },
+  {
+   "id": "ty_tk",
+   "group": "Tyres",
+   "label": "Tyre squish stiffness",
+   "desc": "Vertical tyre stiffness TK (N/m): only used to shrink the rolling radius by load/TK.",
+   "loc": "tyredata{a}{w}",
+   "off": "0x558",
+   "type": "f32",
+   "unit": "N/m",
+   "min": 20000,
+   "max": 2000000,
+   "step": 5000,
+   "stock_example": 220300,
+   "apply": "live",
+   "risk": "The tyre model object is shared by every wheel (and every car) that uses the same WHEEL name: on the RX-7 TRS all four wheels use \"97RX7TRSR-FRONT\", so one edit changes all four, and also AI cars of the same model. Never 0.",
+   "source": "03-tyre.md 2.4; Tyre::Update 0x28e9b0 (lwc1 0x558)",
+   "goals": {
+    "highway": "Up: a few mm taller rolling radius, tiny gearing change. Down: a few mm shorter."
+   },
+   "goals_best": {
+    "highway": "balance"
+   },
+   "ends": {
+    "low": "Squishy",
+    "high": "Hard"
+   },
+   "proof": [
+    [
+     "0x28e9b0",
+     "0x558"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x569fd8"
+  },
+  {
+   "id": "ty_force_recompute",
+   "group": "Tyres",
+   "label": "Pacejka recompute every step",
+   "desc": "Normally the B/C/D/E terms are only rebuilt when load changes by 50 N or camber changes. Setting this flag makes them rebuild every step (so coefficient edits apply at once).",
+   "loc": "tyredata{a}{w}",
+   "off": "0x58c",
+   "type": "bool32",
+   "unit": "",
+   "min": 0,
+   "max": 1,
+   "step": 1,
+   "stock_example": 0,
+   "apply": "live",
+   "risk": "Costs CPU; the peak-table builder 0x28fab8 sets and clears this flag itself.",
+   "source": "03-tyre.md 2.10; fast Pacejka 0x28cef4 (lw 0x58c)",
+   "goals": {
+    "grip": "Up (on): coefficient edits apply instantly. Down (off): normal speed."
+   },
+   "goals_best": {
+    "grip": "balance"
+   },
+   "ends": {
+    "low": "Off: cached",
+    "high": "On: always fresh"
+   },
+   "proof": [
+    [
+     "0x28cef4",
+     "0x58c"
+    ],
+    [
+     "0x28c5d0",
+     "0x58c"
+    ]
+   ],
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "vt": "0x569fd8"
+  },
+  {
+   "id": "st_lock",
+   "group": "Steering",
+   "label": "Max steering lock",
+   "desc": "Largest wheel angle allowed. In grip driving the real limit is the front tyre peak slip (~17°), so this only matters for counter-steer in drifts. DRIFT-PHYSICS raises it to 64.7°.",
+   "loc": "car->+0x954",
+   "off": "0x88",
+   "type": "f32_rad_as_deg",
+   "unit": "deg",
+   "min": 10,
+   "max": 80,
+   "step": 0.5,
+   "stock_example": 55.0,
+   "apply": "live. Also poke +0x8c (script copy) so a Configure keeps it. Note: the chassis Configure pass (0x27fe60, run when Driving Assist or DRIFT-PHYSICS is changed, and by any 'after' call to 0x27fe60) rewrites this field to its script lock (+0x8c) or 64.7°.",
+   "risk": "None found; above ~80° the Ackermann maths (tan) gets wild.",
+   "source": "07-steering.md 2.4/2.5; PlayerTarget 0x28ae54 (lwc1 0x88), Update 0x28b92c; steering pointer car+0x954 read 0x27d410",
+   "goals": {
+    "drift": "Up: more counter-steer room for big angles. Down: you run out of lock and spin.",
+    "grip": "Up: no change in grip driving because the tyre peak slip limits lock first. Down: same, until it drops below the peak slip."
+   },
+   "goals_best": {
+    "drift": "up",
+    "grip": "balance"
+   },
+   "ends": {
+    "low": "Less counter-steer",
+    "high": "More counter-steer"
+   },
+   "proof": [
+    [
+     "0x28ae54",
+     "0x88"
+    ],
+    [
+     "0x28b92c",
+     "0x88"
+    ],
+    [
+     "0x27d410",
+     "0x954"
+    ]
+   ],
+   "vt": "0x569880"
+  },
+  {
+   "id": "st_rate",
+   "group": "Steering",
+   "label": "Steering speed",
+   "desc": "Base wheel turning speed (shown in deg/s): rate = this x gain x exp(-speed/200), 13x faster when returning to centre.",
+   "loc": "car->+0x954",
+   "off": "0x84",
+   "type": "f32_rad_as_deg",
+   "unit": "deg/s",
+   "min": 10,
+   "max": 400,
+   "step": 5,
+   "stock_example": 55.0,
+   "apply": "live. Note: the chassis Configure pass (0x27fe60, run when Driving Assist or DRIFT-PHYSICS is changed, and by any 'after' call to 0x27fe60) rewrites this field to its code default.",
+   "risk": "None found.",
+   "source": "07-steering.md 2.5; PlayerTarget 0x28aec8 (lwc1 0x84); set 0.95993 by Configure 0x28a140",
+   "goals": {
+    "drift": "Up: catch slides and flick faster. Down: slow hands, hard to catch.",
+    "grip": "Up: twitchy. Down: smooth.",
+    "stability": "Up: nervous at speed. Down: calm.",
+    "highway": "Up: twitchy at speed. Down: calm lane changes."
+   },
+   "goals_best": {
+    "drift": "up",
+    "grip": "balance",
+    "stability": "down",
+    "highway": "down"
+   },
+   "ends": {
+    "low": "Slow, calm",
+    "high": "Fast, twitchy"
+   },
+   "proof": [
+    [
+     "0x28aec8",
+     "0x84"
+    ],
+    [
+     "0x28a140",
+     "0x84"
+    ]
+   ],
+   "vt": "0x569880"
+  },
+  {
+   "id": "st_rate_gain",
+   "group": "Steering",
+   "label": "Steering speed gain",
+   "desc": "Multiplier on the steering speed (type-1 default 0.7).",
+   "loc": "car->+0x954",
+   "off": "0xbc",
+   "type": "f32",
+   "unit": "x",
+   "min": 0.1,
+   "max": 3,
+   "step": 0.05,
+   "stock_example": 0.7,
+   "apply": "live. Note: the chassis Configure pass (0x27fe60, run when Driving Assist or DRIFT-PHYSICS is changed, and by any 'after' call to 0x27fe60) rewrites this field to its code default.",
+   "risk": "None.",
+   "source": "07-steering.md 2.4; 0x28ae64 (lwc1 0xbc); Configure 0x28a114",
+   "goals": {
+    "drift": "Up: faster counter-steer. Down: slower.",
+    "highway": "Up: twitchy. Down: calm."
+   },
+   "goals_best": {
+    "drift": "up",
+    "highway": "down"
+   },
+   "ends": {
+    "low": "Slow",
+    "high": "Fast"
+   },
+   "proof": [
+    [
+     "0x28ae64",
+     "0xbc"
+    ],
+    [
+     "0x28a114",
+     "0xbc"
+    ]
+   ],
+   "vt": "0x569880"
+  },
+  {
+   "id": "st_assist",
+   "group": "Steering",
+   "label": "Auto counter-steer strength",
+   "desc": "Driving Assist gain: adds counter-steer when the car leaves the safe slip/yaw ellipse (1 = Assist On, 0 = Off).",
+   "loc": "car->+0x954",
+   "off": "0x78",
+   "type": "f32",
+   "unit": "x",
+   "min": 0,
+   "max": 3,
+   "step": 0.05,
+   "stock_example": "1 (Assist On) / 0 (Off)",
+   "apply": "live. Configure copies clamp01(chassis+0x248) into it.",
+   "risk": "None.",
+   "source": "07-steering.md 2.5/2.11; 0x28aa68 (lwc1 0x78); Configure 0x28a008",
+   "goals": {
+    "drift": "Up: the game counter-steers for you and stops big angles. Down: full control.",
+    "stability": "Up: catches slides. Down: you must catch them.",
+    "grip": "Up: safer. Down: raw."
+   },
+   "goals_best": {
+    "drift": "down",
+    "stability": "up",
+    "grip": "up"
+   },
+   "ends": {
+    "low": "Off: you steer",
+    "high": "On: auto catch"
+   },
+   "proof": [
+    [
+     "0x28aa68",
+     "0x78"
+    ],
+    [
+     "0x28a008",
+     "0x78"
+    ]
+   ],
+   "vt": "0x569880"
+  },
+  {
+   "id": "st_ellipse_slip",
+   "group": "Steering",
+   "label": "Assist slip limit",
+   "desc": "Rear slip angle (deg shown) at the edge of the assist's \"safe\" ellipse. Bigger lets you slide further before the assist steps in.",
+   "loc": "car->+0x954",
+   "off": "0xa8",
+   "type": "f32_rad_as_deg",
+   "unit": "deg",
+   "min": 2,
+   "max": 60,
+   "step": 0.5,
+   "stock_example": 20.05,
+   "apply": "live. Note: the chassis Configure pass (0x27fe60, run when Driving Assist or DRIFT-PHYSICS is changed, and by any 'after' call to 0x27fe60) rewrites this field to its code default.",
+   "risk": "Never 0 (divides, 0x28a7b0).",
+   "source": "07-steering.md 2.5; 0x28a7b0 (lwc1 0xa8); Configure 0x28a10c",
+   "goals": {
+    "drift": "Up: more angle before help. Down: help kicks in early.",
+    "stability": "Up: later help. Down: early help."
+   },
+   "goals_best": {
+    "drift": "up",
+    "stability": "down"
+   },
+   "ends": {
+    "low": "Early help",
+    "high": "Late help"
+   },
+   "proof": [
+    [
+     "0x28a7b0",
+     "0xa8"
+    ],
+    [
+     "0x28a10c",
+     "0xa8"
+    ]
+   ],
+   "vt": "0x569880"
+  },
+  {
+   "id": "st_ellipse_yaw",
+   "group": "Steering",
+   "label": "Assist yaw limit",
+   "desc": "Turning speed (deg/s shown) at the edge of the assist ellipse.",
+   "loc": "car->+0x954",
+   "off": "0xac",
+   "type": "f32_rad_as_deg",
+   "unit": "deg/s",
+   "min": 20,
+   "max": 500,
+   "step": 5,
+   "stock_example": 143.2,
+   "apply": "live. Note: the chassis Configure pass (0x27fe60, run when Driving Assist or DRIFT-PHYSICS is changed, and by any 'after' call to 0x27fe60) rewrites this field to its code default.",
+   "risk": "Never 0.",
+   "source": "07-steering.md 2.5; 0x28a7bc (lwc1 0xac); Configure 0x28a104",
+   "goals": {
+    "drift": "Up: allows faster rotation. Down: steps in on quick rotation.",
+    "stability": "Up: later help. Down: earlier help."
+   },
+   "goals_best": {
+    "drift": "up",
+    "stability": "down"
+   },
+   "ends": {
+    "low": "Early help",
+    "high": "Late help"
+   },
+   "proof": [
+    [
+     "0x28a7bc",
+     "0xac"
+    ],
+    [
+     "0x28a104",
+     "0xac"
+    ]
+   ],
+   "vt": "0x569880"
+  },
+  {
+   "id": "st_controller",
+   "group": "Steering",
+   "label": "Ackermann on/off",
+   "desc": "1 = Ackermann (inner wheel turns more, 50% strength, the 0.5 is a code immediate), 0 = both wheels same angle.",
+   "loc": "car->+0x954",
+   "off": "0x94",
+   "type": "bool32",
+   "unit": "",
+   "min": 0,
+   "max": 1,
+   "step": 1,
+   "stock_example": 1,
+   "apply": "live",
+   "risk": "None.",
+   "source": "07-steering.md 2.8; Update 0x28b998 (lw 0x94)",
+   "goals": {
+    "grip": "Up (on): less tyre scrub at full lock. Down (off): both wheels at the same angle.",
+    "drift": "Up (on): normal counter-steer. Down (off): outer wheel steers as much as the inner."
+   },
+   "goals_best": {
+    "grip": "up",
+    "drift": "balance"
+   },
+   "ends": {
+    "low": "Off: parallel",
+    "high": "On: Ackermann"
+   },
+   "proof": [
+    [
+     "0x28b998",
+     "0x94"
+    ]
+   ],
+   "vt": "0x569880"
+  },
+  {
+   "id": "st_castor",
+   "group": "Steering",
+   "label": "Castor",
+   "desc": "Castor angle (deg shown): adds camber as the wheel steers (camber += castor x sin(steer)).",
+   "loc": "car->+0x954",
+   "off": "0x80",
+   "type": "f32_rad_as_deg",
+   "unit": "deg",
+   "min": 0,
+   "max": 15,
+   "step": 0.5,
+   "stock_example": 6.0,
+   "apply": "live",
+   "risk": "None.",
+   "source": "07-steering.md 2.8; Kinematics 0x27d430 (lwc1 0x80 via steering)",
+   "goals": {
+    "grip": "Up: more camber gain at lock, a bit more front grip. Down: less.",
+    "drift": "Up: front holds better at big counter-steer. Down: less."
+   },
+   "goals_best": {
+    "grip": "up",
+    "drift": "balance"
+   },
+   "ends": {
+    "low": "Less castor",
+    "high": "More castor"
+   },
+   "proof": [
+    [
+     "0x27d430",
+     "0x80"
+    ]
+   ],
+   "vt": "0x569880"
+  },
+  {
+   "id": "st_lock_drop",
+   "group": "Steering",
+   "label": "Lock limit drop speed",
+   "desc": "How fast the steering limit shrinks each step (fraction).",
+   "loc": "car->+0x954",
+   "off": "0xd0",
+   "type": "f32",
+   "unit": "fraction",
+   "min": 0.01,
+   "max": 1,
+   "step": 0.01,
+   "stock_example": 0.1,
+   "apply": "live",
+   "risk": "0 would freeze the limit.",
+   "source": "07-steering.md 2.4; 0x28ace0 (lwc1 0xd0)",
+   "goals": {
+    "drift": "Up: the limit snaps down quickly. Down: holds lock longer."
+   },
+   "goals_best": {
+    "drift": "down"
+   },
+   "ends": {
+    "low": "Holds lock",
+    "high": "Snaps back"
+   },
+   "proof": [
+    [
+     "0x28ace0",
+     "0xd0"
+    ]
+   ],
+   "vt": "0x569880"
+  },
+  {
+   "id": "ayc_enable",
+   "group": "Assists & yaw control",
+   "label": "Yaw limiter on/off",
+   "desc": "ActiveYawControl component enabled flag. 0 = no anti-spin torque at all.",
+   "loc": "comp:567290",
+   "off": "0x74",
+   "type": "bool32",
+   "unit": "",
+   "min": 0,
+   "max": 1,
+   "step": 1,
+   "stock_example": 1,
+   "apply": "live",
+   "risk": "Off makes snap spins much easier.",
+   "source": "07-steering.md 2.10; ActiveYawControl::Update 0x2830d0",
+   "goals": {
+    "drift": "Up (on): the game brakes fast spins. Down (off): you can over-rotate freely.",
+    "stability": "Up (on): hard to spin. Down (off): spins happen."
+   },
+   "goals_best": {
+    "drift": "down",
+    "stability": "up"
+   },
+   "ends": {
+    "low": "Off: free spin",
+    "high": "On: anti-spin"
+   },
+   "proof": [
+    [
+     "0x28384c",
+     "0x74"
+    ]
+   ],
+   "vt": "0x567290"
+  },
+  {
+   "id": "ayc_strength",
+   "group": "Assists & yaw control",
+   "label": "Yaw limiter strength",
+   "desc": "Scales the anti-spin torque and shifts the speed envelope.",
+   "loc": "comp:567290",
+   "off": "0x78",
+   "type": "f32",
+   "unit": "x",
+   "min": 0,
+   "max": 2,
+   "step": 0.05,
+   "stock_example": 0.25,
+   "apply": "live. Note: the chassis Configure pass (0x27fe60, run when Driving Assist or DRIFT-PHYSICS is changed, and by any 'after' call to 0x27fe60) rewrites this field to its code default.",
+   "risk": "None.",
+   "source": "07-steering.md 2.10; ActiveYawControl::Update 0x2830d0",
+   "goals": {
+    "drift": "Up: strong anti-spin, angle is limited. Down: more freedom.",
+    "stability": "Up: very stable. Down: loose."
+   },
+   "goals_best": {
+    "drift": "down",
+    "stability": "up"
+   },
+   "ends": {
+    "low": "Loose",
+    "high": "Locked-in"
+   },
+   "proof": [
+    [
+     "0x28311c",
+     "0x78"
+    ],
+    [
+     "0x2836d4",
+     "0x78"
+    ]
+   ],
+   "vt": "0x567290"
+  },
+  {
+   "id": "ayc_beta_max",
+   "group": "Assists & yaw control",
+   "label": "Yaw limiter slip limit",
+   "desc": "Base rear-slip limit (deg shown) of the allowed envelope; it shrinks with speed.",
+   "loc": "comp:567290",
+   "off": "0xd4",
+   "type": "f32_rad_as_deg",
+   "unit": "deg",
+   "min": 5,
+   "max": 180,
+   "step": 1,
+   "stock_example": 54.4,
+   "apply": "live. Note: the chassis Configure pass (0x27fe60, run when Driving Assist or DRIFT-PHYSICS is changed, and by any 'after' call to 0x27fe60) rewrites this field to its code default.",
+   "risk": "Never 0 (divides).",
+   "source": "07-steering.md 2.10; ActiveYawControl::Update 0x2830d0",
+   "goals": {
+    "drift": "Up: more angle allowed before braking the spin. Down: cuts angle.",
+    "stability": "Up: later catch. Down: early catch."
+   },
+   "goals_best": {
+    "drift": "up",
+    "stability": "down"
+   },
+   "ends": {
+    "low": "Small angles",
+    "high": "Big angles"
+   },
+   "proof": [
+    [
+     "0x283268",
+     "0xd4"
+    ]
+   ],
+   "vt": "0x567290"
+  },
+  {
+   "id": "ayc_yaw_max",
+   "group": "Assists & yaw control",
+   "label": "Yaw limiter rotation limit",
+   "desc": "Base allowed rotation speed (deg/s shown); it falls with speed.",
+   "loc": "comp:567290",
+   "off": "0xd8",
+   "type": "f32_rad_as_deg",
+   "unit": "deg/s",
+   "min": 10,
+   "max": 500,
+   "step": 5,
+   "stock_example": 83.1,
+   "apply": "live. Note: the chassis Configure pass (0x27fe60, run when Driving Assist or DRIFT-PHYSICS is changed, and by any 'after' call to 0x27fe60) rewrites this field to its code default.",
+   "risk": "None.",
+   "source": "07-steering.md 2.10; ActiveYawControl::Update 0x2830d0",
+   "goals": {
+    "drift": "Up: faster rotation allowed. Down: rotation braked early.",
+    "stability": "Up: less anti-spin. Down: more."
+   },
+   "goals_best": {
+    "drift": "up",
+    "stability": "down"
+   },
+   "ends": {
+    "low": "Slow rotation",
+    "high": "Fast rotation"
+   },
+   "proof": [
+    [
+     "0x28326c",
+     "0xd8"
+    ]
+   ],
+   "vt": "0x567290"
+  },
+  {
+   "id": "ayc_yaw_cap",
+   "group": "Assists & yaw control",
+   "label": "Yaw limiter rotation cap",
+   "desc": "Absolute cap on the allowed rotation speed (3 rad/s).",
+   "loc": "comp:567290",
+   "off": "0xdc",
+   "type": "f32_rad_as_deg",
+   "unit": "deg/s",
+   "min": 10,
+   "max": 1000,
+   "step": 5,
+   "stock_example": 171.9,
+   "apply": "live",
+   "risk": "None.",
+   "source": "07-steering.md 2.10; ActiveYawControl::Update 0x2830d0",
+   "goals": {
+    "drift": "Up: lets slow-speed spins rotate faster. Down: caps rotation."
+   },
+   "goals_best": {
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Low cap",
+    "high": "High cap"
+   },
+   "proof": [
+    [
+     "0x283544",
+     "0xdc"
+    ]
+   ],
+   "vt": "0x567290"
+  },
+  {
+   "id": "ayc_speed_pivot",
+   "group": "Assists & yaw control",
+   "label": "Yaw limiter speed pivot",
+   "desc": "Speed around which the allowed envelope shrinks.",
+   "loc": "comp:567290",
+   "off": "0xe0",
+   "type": "f32",
+   "unit": "m/s",
+   "min": 5,
+   "max": 150,
+   "step": 1,
+   "stock_example": 50,
+   "apply": "live",
+   "risk": "Avoid 0 (the speed curve divides by it).",
+   "source": "07-steering.md 2.10; ActiveYawControl::Update 0x2830d0",
+   "goals": {
+    "highway": "Up: limits stay loose to higher speed. Down: tight early.",
+    "drift": "Up: more freedom at speed. Down: less."
+   },
+   "goals_best": {
+    "highway": "down",
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Tight early",
+    "high": "Loose longer"
+   },
+   "proof": [
+    [
+     "0x283148",
+     "0xe0"
+    ],
+    [
+     "0x2831a4",
+     "0xe0"
+    ]
+   ],
+   "vt": "0x567290"
+  },
+  {
+   "id": "ayc_slip_fade",
+   "group": "Assists & yaw control",
+   "label": "Yaw limiter slip fade",
+   "desc": "How quickly the slip limit shrinks with speed (bigger = shrinks less).",
+   "loc": "comp:567290",
+   "off": "0xe4",
+   "type": "f32",
+   "unit": "",
+   "min": 5,
+   "max": 1000,
+   "step": 5,
+   "stock_example": 100,
+   "apply": "live",
+   "risk": "Never 0.",
+   "source": "07-steering.md 2.10; ActiveYawControl::Update 0x2830d0",
+   "goals": {
+    "drift": "Up: big angles still allowed at speed. Down: angle cut at speed."
+   },
+   "goals_best": {
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Fades fast",
+    "high": "Fades slow"
+   },
+   "proof": [
+    [
+     "0x283138",
+     "0xe4"
+    ]
+   ],
+   "vt": "0x567290"
+  },
+  {
+   "id": "ayc_yaw_fade",
+   "group": "Assists & yaw control",
+   "label": "Yaw limiter rotation fade",
+   "desc": "How quickly the rotation limit shrinks with speed.",
+   "loc": "comp:567290",
+   "off": "0xe8",
+   "type": "f32",
+   "unit": "",
+   "min": 5,
+   "max": 2000,
+   "step": 5,
+   "stock_example": 250,
+   "apply": "live",
+   "risk": "Never 0.",
+   "source": "07-steering.md 2.10; ActiveYawControl::Update 0x2830d0",
+   "goals": {
+    "drift": "Up: rotation allowed at speed. Down: braked.",
+    "stability": "Up: less help at speed. Down: more."
+   },
+   "goals_best": {
+    "drift": "up",
+    "stability": "down"
+   },
+   "ends": {
+    "low": "Fades fast",
+    "high": "Fades slow"
+   },
+   "proof": [
+    [
+     "0x283130",
+     "0xe8"
+    ]
+   ],
+   "vt": "0x567290"
+  },
+  {
+   "id": "ayc_gain",
+   "group": "Assists & yaw control",
+   "label": "Yaw limiter torque gain",
+   "desc": "Torque scale: torque ≈ strength x gain x mass/1600 x ((|yaw|+1)^exp - 1) (1600 is a code immediate). Clamped to 62.5 x mass.",
+   "loc": "comp:567290",
+   "off": "0xf8",
+   "type": "f32",
+   "unit": "N·m per kg",
+   "min": 0,
+   "max": 100000,
+   "step": 500,
+   "stock_example": 20000,
+   "apply": "live",
+   "risk": "None.",
+   "source": "07-steering.md 2.10; ActiveYawControl::Update 0x2830d0",
+   "goals": {
+    "drift": "Up: brutal anti-spin. Down: soft.",
+    "stability": "Up: catches spins hard. Down: gentle."
+   },
+   "goals_best": {
+    "drift": "down",
+    "stability": "up"
+   },
+   "ends": {
+    "low": "Soft",
+    "high": "Hard"
+   },
+   "proof": [
+    [
+     "0x283628",
+     "0xf8"
+    ]
+   ],
+   "vt": "0x567290"
+  },
+  {
+   "id": "ayc_exponent",
+   "group": "Assists & yaw control",
+   "label": "Yaw limiter torque curve",
+   "desc": "Exponent of the torque curve (and divisor of the curve gain).",
+   "loc": "comp:567290",
+   "off": "0x104",
+   "type": "f32",
+   "unit": "exponent",
+   "min": 0.5,
+   "max": 4,
+   "step": 0.1,
+   "stock_example": 2,
+   "apply": "live",
+   "risk": "Never 0 (divides at 0x283660).",
+   "source": "07-steering.md 2.10; ActiveYawControl::Update 0x2830d0",
+   "goals": {
+    "drift": "Up: torque grows fast with yaw. Down: gentle growth."
+   },
+   "goals_best": {
+    "drift": "down"
+   },
+   "ends": {
+    "low": "Gentle",
+    "high": "Aggressive"
+   },
+   "proof": [
+    [
+     "0x2835bc",
+     "0x104"
+    ],
+    [
+     "0x283648",
+     "0x104"
+    ]
+   ],
+   "vt": "0x567290"
+  },
+  {
+   "id": "ta_strength",
+   "group": "Assists & yaw control",
+   "label": "Traction assist strength",
+   "desc": "Wheelspin cap = 5 x (1 - strength) x peak slip when active. Component \"TCRL\" is only built by a TRACTION-ASSIST script keyword, which no disc car has.",
+   "loc": "comp:567878",
+   "off": "0x78",
+   "type": "f32",
+   "unit": "",
+   "min": 0,
+   "max": 1,
+   "step": 0.05,
+   "stock_example": null,
+   "apply": "live (component usually absent)",
+   "risk": "Absent on every disc car: editor must skip.",
+   "source": "03-tyre.md 2.7; RaceCarTractionAssist::Update 0x2842e0",
+   "goals": {
+    "launch": "Up: less wheelspin. Down: more wheelspin.",
+    "drift": "Up: cuts power slides. Down: free."
+   },
+   "goals_best": {
+    "launch": "up",
+    "drift": "down"
+   },
+   "ends": {
+    "low": "Off",
+    "high": "Strong"
+   },
+   "proof": [
+    [
+     "0x28436c",
+     "0x78"
+    ]
+   ],
+   "vt": "0x567878"
+  },
+  {
+   "id": "ta_slip_gate",
+   "group": "Assists & yaw control",
+   "label": "Traction assist slip gate",
+   "desc": "Assist acts only when rear slip > 0.3 x this. Component \"TCRL\" is only built by a TRACTION-ASSIST script keyword, which no disc car has.",
+   "loc": "comp:567878",
+   "off": "0x88",
+   "type": "f32",
+   "unit": "",
+   "min": 0,
+   "max": 5,
+   "step": 0.05,
+   "stock_example": null,
+   "apply": "live (component usually absent)",
+   "risk": "Absent on every disc car: editor must skip.",
+   "source": "03-tyre.md 2.7; RaceCarTractionAssist::Update 0x2842e0",
+   "goals": {
+    "launch": "Up: less wheelspin. Down: more wheelspin.",
+    "drift": "Up: cuts power slides. Down: free."
+   },
+   "goals_best": {
+    "launch": "up",
+    "drift": "down"
+   },
+   "ends": {
+    "low": "Off",
+    "high": "Strong"
+   },
+   "proof": [
+    [
+     "0x284308",
+     "0x88"
+    ]
+   ],
+   "vt": "0x567878"
+  },
+  {
+   "id": "ta_yaw_gate",
+   "group": "Assists & yaw control",
+   "label": "Traction assist yaw gate",
+   "desc": "Assist acts only when yaw rate <= this. Component \"TCRL\" is only built by a TRACTION-ASSIST script keyword, which no disc car has.",
+   "loc": "comp:567878",
+   "off": "0x8c",
+   "type": "f32",
+   "unit": "",
+   "min": 0,
+   "max": 10,
+   "step": 0.05,
+   "stock_example": null,
+   "apply": "live (component usually absent)",
+   "risk": "Absent on every disc car: editor must skip.",
+   "source": "03-tyre.md 2.7; RaceCarTractionAssist::Update 0x2842e0",
+   "goals": {
+    "launch": "Up: less wheelspin. Down: more wheelspin.",
+    "drift": "Up: cuts power slides. Down: free."
+   },
+   "goals_best": {
+    "launch": "up",
+    "drift": "down"
+   },
+   "ends": {
+    "low": "Off",
+    "high": "Strong"
+   },
+   "proof": [
+    [
+     "0x284340",
+     "0x8c"
+    ]
+   ],
+   "vt": "0x567878"
+  },
+  {
+   "id": "ch_mass",
+   "group": "Chassis & mass",
+   "label": "Car mass",
+   "desc": "Car mass (kg) used by the game (spring clamp 40 x mass, yaw limiter, drift push, static loads) and, after the call, by the PhysX body (plus wheel masses).",
+   "loc": "car",
+   "off": "0x300",
+   "type": "f32",
+   "unit": "kg",
+   "min": 300,
+   "max": 5000,
+   "step": 10,
+   "stock_example": 1338,
+   "apply": "poke, then after: 0x241468(car,car) re-applies it (writes 1/mass at +0x1e4 and the PhysX mass), then 0x2791c0(chassis,0) for per-wheel load and sag",
+   "risk": "Never 0 (1/mass). The yaw inertia (INERTIA) is NOT rescaled, so a big mass change makes rotation feel wrong. The spring force clamp is 40 x mass.",
+   "source": "source: SetMass 0x23dab0 (swc1 0x300) + GSRaceCar override 0x271a90; static loads read 0x279234",
+   "goals": {
+    "drag": "Up: slower acceleration. Down: faster.",
+    "grip": "Up: more load but grip grows slower than weight. Down: nimbler.",
+    "stability": "Up: harder to knock around. Down: lighter, bouncier.",
+    "highway": "Up: same top speed but slower to reach it. Down: reaches top speed sooner."
+   },
+   "goals_best": {
+    "drag": "down",
+    "grip": "down",
+    "stability": "up",
+    "highway": "balance"
+   },
+   "ends": {
+    "low": "Light, quick",
+    "high": "Heavy, planted"
+   },
+   "proof": [
+    [
+     "0x23dab0",
+     "0x300"
+    ],
+    [
+     "0x279234",
+     "0x300"
+    ],
+    [
+     "0x3320fc",
+     "0x300"
+    ]
+   ],
+   "vt": "0x521480",
+   "after": [
+    {
+     "call": "0x241468",
+     "args": [
+      "car",
+      "car"
+     ]
+    },
+    {
+     "call": "0x2791c0",
+     "args": [
+      "chassis",
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ch_drag",
+   "group": "Aero",
+   "label": "Drag (CdA)",
+   "desc": "Air drag force = this x speed², pushing back at the centre of mass.",
+   "loc": "chassis",
+   "off": "0x140",
+   "type": "f32",
+   "unit": "N·s²/m²",
+   "min": 0,
+   "max": 3,
+   "step": 0.01,
+   "stock_example": 0.7,
+   "apply": "live",
+   "risk": "0 means no top speed limit except the rev limiter.",
+   "source": "02-suspension.md 7; Chassis drag 0x279748 (lwc1 0x140)",
+   "goals": {
+    "highway": "Up: lower top speed. Down: much higher top speed.",
+    "drag": "Up: slower at high speed. Down: faster."
+   },
+   "goals_best": {
+    "highway": "down",
+    "drag": "down"
+   },
+   "ends": {
+    "low": "Slippery",
+    "high": "Draggy"
+   },
+   "proof": [
+    [
+     "0x279748",
+     "0x140"
+    ],
+    [
+     "0x2797f4",
+     "0x140"
+    ]
+   ],
+   "vt": "0x5667b8"
+  },
+  {
+   "id": "ch_drift_physics",
+   "group": "Chassis & mass",
+   "label": "DRIFT-PHYSICS",
+   "desc": "0..1 drift tuning. When the components are reconfigured it sets the side grip add-on to 0.4 x this on the FRONT tyres only (wheels whose mount z, wheel+0x2d0, is > 0) and raises the steering lock to 64.7° (if > 0.01).",
+   "loc": "chassis",
+   "off": "0x244",
+   "type": "f32",
+   "unit": "0..1",
+   "min": 0,
+   "max": 1,
+   "step": 0.05,
+   "stock_example": 0,
+   "apply": "poke, then after: 0x27fe60(chassis) (re-runs every component's Configure). The setter 0x27ff78 needs a float arg so it cannot be called directly.",
+   "risk": "The Configure call also resets every Configure-set field (steering speed/assist, AYC limits, tyre filters) to defaults.",
+   "source": "03-tyre.md 2.9 / 07-steering.md 2.11; read by tyre Configure 0x330234 and steering Configure 0x28a044",
+   "goals": {
+    "drift": "Up: more front grip and more counter-steer lock to hold big angles. Down: stock.",
+    "grip": "Up: more front grip (can make the car oversteer-free but nervous). Down: stock."
+   },
+   "goals_best": {
+    "drift": "up",
+    "grip": "balance"
+   },
+   "ends": {
+    "low": "Stock",
+    "high": "Drift tuned"
+   },
+   "proof": [
+    [
+     "0x330234",
+     "0x244"
+    ],
+    [
+     "0x28a044",
+     "0x244"
+    ]
+   ],
+   "vt": "0x5667b8",
+   "after": [
+    {
+     "call": "0x27fe60",
+     "args": [
+      "chassis"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ch_assist",
+   "group": "Assists & yaw control",
+   "label": "Driving Assist (menu)",
+   "desc": "Driving Assist value (1 On, 0 Off). After Configure it becomes the auto counter-steer gain.",
+   "loc": "chassis",
+   "off": "0x248",
+   "type": "f32",
+   "unit": "0..1",
+   "min": 0,
+   "max": 1,
+   "step": 1,
+   "stock_example": "menu",
+   "apply": "poke, then after: 0x27fe60(chassis)",
+   "risk": "Same Configure reset as DRIFT-PHYSICS.",
+   "source": "07-steering.md 2.11; steering Configure 0x28a0a8 (lw 0x248); setter 0x27ffe0",
+   "goals": {
+    "stability": "Up (on): auto counter-steer. Down (off): none.",
+    "drift": "Up (on): limits angle. Down (off): full control."
+   },
+   "goals_best": {
+    "stability": "up",
+    "drift": "down"
+   },
+   "ends": {
+    "low": "Off",
+    "high": "On"
+   },
+   "proof": [
+    [
+     "0x28a0a8",
+     "0x248"
+    ],
+    [
+     "0x27ffe0",
+     "0x248"
+    ]
+   ],
+   "vt": "0x5667b8",
+   "after": [
+    {
+     "call": "0x27fe60",
+     "args": [
+      "chassis"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ch_handling_boost",
+   "group": "Chassis & mass",
+   "label": "Handling boost (drift factor D)",
+   "desc": "Upgrade HANDLING-BOOST: drift factor D = clamp(surface SLIP-VAR x tyre boost + this, -1, 1). D>0 gives side force x(1+0.5D), stronger slip-angle falloff of forward force and weaker wheelspin falloff of side force.",
+   "loc": "chassis",
+   "off": "0x204",
+   "type": "f32",
+   "unit": "D",
+   "min": -1,
+   "max": 1,
+   "step": 0.05,
+   "stock_example": 0,
+   "apply": "live; Then force the cached Pacejka terms to refresh: poke 0 into tyre{a}{w}+0xe8 for all four tyres (one-shot), or set tyredata+0x58c to 1.",
+   "risk": "None found.",
+   "source": "03-tyre.md 2.9; 0x281980 / 0x2819a8 (lwc1 0x204)",
+   "goals": {
+    "drift": "Up: more side grip while sliding and power keeps the rear loose. Down: stock.",
+    "grip": "Up: more side grip. Down: less."
+   },
+   "goals_best": {
+    "drift": "up",
+    "grip": "up"
+   },
+   "ends": {
+    "low": "Stock",
+    "high": "Boosted"
+   },
+   "proof": [
+    [
+     "0x281980",
+     "0x204"
+    ],
+    [
+     "0x2819a8",
+     "0x204"
+    ]
+   ],
+   "vt": "0x5667b8"
+  },
+  {
+   "id": "ch_env_slip",
+   "group": "Drift meter",
+   "label": "Drift envelope slip scale",
+   "desc": "Rear slip (rad) that marks the edge of the drift \"envelope\" used for the SPIN warning and the throttle gauge (x = (slip/this)²).",
+   "loc": "chassis",
+   "off": "0x238",
+   "type": "f32",
+   "unit": "rad",
+   "min": 0.2,
+   "max": 3,
+   "step": 0.05,
+   "stock_example": 1.1,
+   "apply": "live (set once at reset 0x27fb1c)",
+   "risk": "Never 0 (divides).",
+   "source": "06-drift-meter.md 5; DriftState 0x2802e0 (lwc1 0x238)",
+   "goals": {
+    "drift": "Up: SPIN warning comes later. Down: warns early."
+   },
+   "goals_best": {
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Warns early",
+    "high": "Warns late"
+   },
+   "proof": [
+    [
+     "0x2802e0",
+     "0x238"
+    ]
+   ],
+   "vt": "0x5667b8"
+  },
+  {
+   "id": "ch_env_yaw",
+   "group": "Drift meter",
+   "label": "Drift envelope yaw scale",
+   "desc": "Yaw rate (rad/s) scale of the same envelope.",
+   "loc": "chassis",
+   "off": "0x23c",
+   "type": "f32",
+   "unit": "rad/s",
+   "min": 0.5,
+   "max": 6,
+   "step": 0.05,
+   "stock_example": 2.2,
+   "apply": "live",
+   "risk": "Never 0.",
+   "source": "06-drift-meter.md 5; DriftState 0x2803bc (lwc1 0x23c)",
+   "goals": {
+    "drift": "Up: fast rotation still counts as in control. Down: warns sooner."
+   },
+   "goals_best": {
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Warns early",
+    "high": "Warns late"
+   },
+   "proof": [
+    [
+     "0x2803bc",
+     "0x23c"
+    ]
+   ],
+   "vt": "0x5667b8"
+  },
+  {
+   "id": "br_force",
+   "group": "Brakes",
+   "label": "Brake strength",
+   "desc": "Maximum brake force setting (MAX-FORCE); brake torque = pedal (or pedal² in mode 1) x this.",
+   "loc": "comp:583b00",
+   "off": "0x8c",
+   "type": "f32",
+   "unit": "N",
+   "min": 0,
+   "max": 30000,
+   "step": 100,
+   "stock_example": 7500,
+   "apply": "live",
+   "risk": "None found.",
+   "source": "brakes parser 0x32eae4; force getter 0x32ea50 (lwc1 0x8c) called from 0x32dcc8",
+   "goals": {
+    "stability": "Up: stops shorter (until lock-up). Down: longer stops.",
+    "grip": "Up: brake later. Down: brake earlier.",
+    "drift": "Up: easy braking-drift entries. Down: gentle weight shift."
+   },
+   "goals_best": {
+    "stability": "up",
+    "grip": "up",
+    "drift": "balance"
+   },
+   "ends": {
+    "low": "Weak brakes",
+    "high": "Strong brakes"
+   },
+   "proof": [
+    [
+     "0x32ea50",
+     "0x8c"
+    ],
+    [
+     "0x32eae4",
+     "0x8c"
+    ]
+   ],
+   "vt": "0x583b00"
+  },
+  {
+   "id": "br_handbrake",
+   "group": "Brakes",
+   "label": "Handbrake strength",
+   "desc": "MAX-HANDBRAKE-FORCE: handbrake torque = this x (1 + speed factor) x lever, split 75/25 across the rear wheels.",
+   "loc": "comp:583b00",
+   "off": "0x90",
+   "type": "f32",
+   "unit": "N",
+   "min": 0,
+   "max": 30000,
+   "step": 100,
+   "stock_example": 4700,
+   "apply": "live",
+   "risk": "None found.",
+   "source": "brakes parser 0x32eb08; brake controller 0x32e02c (lwc1 0x90)",
+   "goals": {
+    "drift": "Up: handbrake flicks the rear out hard. Down: soft handbrake.",
+    "stability": "Up: easy to spin with handbrake. Down: gentle."
+   },
+   "goals_best": {
+    "drift": "up",
+    "stability": "down"
+   },
+   "ends": {
+    "low": "Soft handbrake",
+    "high": "Hard handbrake"
+   },
+   "proof": [
+    [
+     "0x32e02c",
+     "0x90"
+    ],
+    [
+     "0x32eb08",
+     "0x90"
+    ]
+   ],
+   "vt": "0x583b00"
+  },
+  {
+   "id": "br_bias",
+   "group": "Brakes",
+   "label": "Brake balance",
+   "desc": "BRAKE-BIAS: share of brake force on the front axle.",
+   "loc": "comp:583b00",
+   "off": "0x94",
+   "type": "f32",
+   "unit": "front share",
+   "min": 0,
+   "max": 1,
+   "step": 0.01,
+   "stock_example": 0.6,
+   "apply": "live",
+   "risk": "None found.",
+   "source": "brakes parser 0x32eb2c; brake controller 0x32dcec (lwc1 0x94)",
+   "goals": {
+    "stability": "Up (front): stable, straight stops. Down (rear): tail steps out under braking.",
+    "drift": "Up: braking keeps the car straight. Down: braking rotates the car (braking drift)."
+   },
+   "goals_best": {
+    "stability": "up",
+    "drift": "down"
+   },
+   "ends": {
+    "low": "Rear-heavy (rotates)",
+    "high": "Front-heavy (stable)"
+   },
+   "proof": [
+    [
+     "0x32dcec",
+     "0x94"
+    ],
+    [
+     "0x32eb2c",
+     "0x94"
+    ]
+   ],
+   "vt": "0x583b00"
+  },
+  {
+   "id": "dr_respect",
+   "group": "Drift scoring",
+   "label": "Drift points per second",
+   "desc": "DRIFT-RESPECT: base points each second while drifting. Scoring only, no effect on handling.",
+   "loc": "chassis->+0x1ec",
+   "off": "0xd4",
+   "type": "f32",
+   "unit": "pts/s",
+   "min": 0,
+   "max": 2000,
+   "step": 5,
+   "stock_example": 150,
+   "apply": "live",
+   "risk": "None (scoring only).",
+   "source": "06-drift-meter.md 7/12; DrivingRespect [chassis+0x1ec] (\"RSPT\", stored 0x27fc68)",
+   "goals": {
+    "drift": "Up: more drift points. Down: fewer."
+   },
+   "goals_best": {
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Few points",
+    "high": "Many points"
+   },
+   "proof": [
+    [
+     "0x292324",
+     "0xd4"
+    ],
+    [
+     "0x27fc68",
+     "0x1ec"
+    ]
+   ]
+  },
+  {
+   "id": "dr_angle_bonus",
+   "group": "Drift scoring",
+   "label": "Angle bonus",
+   "desc": "Points x (1 + this x (slip - 1 rad)). Scoring only, no effect on handling.",
+   "loc": "chassis->+0x1ec",
+   "off": "0xe4",
+   "type": "f32",
+   "unit": "",
+   "min": 0,
+   "max": 3,
+   "step": 0.05,
+   "stock_example": 0.3,
+   "apply": "live",
+   "risk": "None (scoring only).",
+   "source": "06-drift-meter.md 7/12; DrivingRespect [chassis+0x1ec] (\"RSPT\", stored 0x27fc68)",
+   "goals": {
+    "drift": "Up: more drift points. Down: fewer."
+   },
+   "goals_best": {
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Angle ignored",
+    "high": "Angle pays"
+   },
+   "proof": [
+    [
+     "0x292318",
+     "0xe4"
+    ],
+    [
+     "0x27fc68",
+     "0x1ec"
+    ]
+   ]
+  },
+  {
+   "id": "dr_speed_bonus",
+   "group": "Drift scoring",
+   "label": "Speed bonus",
+   "desc": "Points x (1 + this x (speed - pivot)/pivot). Scoring only, no effect on handling.",
+   "loc": "chassis->+0x1ec",
+   "off": "0xe8",
+   "type": "f32",
+   "unit": "",
+   "min": 0,
+   "max": 3,
+   "step": 0.05,
+   "stock_example": 0.3,
+   "apply": "live",
+   "risk": "None (scoring only).",
+   "source": "06-drift-meter.md 7/12; DrivingRespect [chassis+0x1ec] (\"RSPT\", stored 0x27fc68)",
+   "goals": {
+    "drift": "Up: more drift points. Down: fewer."
+   },
+   "goals_best": {
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Speed ignored",
+    "high": "Speed pays"
+   },
+   "proof": [
+    [
+     "0x292310",
+     "0xe8"
+    ],
+    [
+     "0x27fc68",
+     "0x1ec"
+    ]
+   ]
+  },
+  {
+   "id": "dr_speed_pivot",
+   "group": "Drift scoring",
+   "label": "Speed bonus pivot",
+   "desc": "Speed where the speed factor is 1. Scoring only, no effect on handling.",
+   "loc": "chassis->+0x1ec",
+   "off": "0xf0",
+   "type": "f32",
+   "unit": "m/s",
+   "min": 1,
+   "max": 100,
+   "step": 1,
+   "stock_example": 40,
+   "apply": "live",
+   "risk": "Never 0 for the pivot (divides).",
+   "source": "06-drift-meter.md 7/12; DrivingRespect [chassis+0x1ec] (\"RSPT\", stored 0x27fc68)",
+   "goals": {
+    "drift": "Up: harder to score. Down: easier."
+   },
+   "goals_best": {
+    "drift": "down"
+   },
+   "ends": {
+    "low": "Slow is enough",
+    "high": "Must be fast"
+   },
+   "proof": [
+    [
+     "0x2922f8",
+     "0xf0"
+    ],
+    [
+     "0x27fc68",
+     "0x1ec"
+    ]
+   ]
+  },
+  {
+   "id": "dr_drift_max",
+   "group": "Drift scoring",
+   "label": "Max scoring angle",
+   "desc": "DRIFT-MAX: slip above this (1.5 rad) scores nothing. Scoring only, no effect on handling.",
+   "loc": "chassis->+0x1ec",
+   "off": "0xd0",
+   "type": "f32_rad_as_deg",
+   "unit": "deg",
+   "min": 10,
+   "max": 180,
+   "step": 1,
+   "stock_example": 85.9,
+   "apply": "live",
+   "risk": "None (scoring only).",
+   "source": "06-drift-meter.md 7/12; DrivingRespect [chassis+0x1ec] (\"RSPT\", stored 0x27fc68)",
+   "goals": {
+    "drift": "Up: more drift points. Down: fewer."
+   },
+   "goals_best": {
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Small angles only",
+    "high": "Huge angles count"
+   },
+   "proof": [
+    [
+     "0x2917a0",
+     "0xd0"
+    ],
+    [
+     "0x27fc68",
+     "0x1ec"
+    ]
+   ]
+  },
+  {
+   "id": "dr_slip_thres",
+   "group": "Drift scoring",
+   "label": "Drift start angle",
+   "desc": "Slip at which the drift factor reaches 1 (0.5 rad); counts as drifting from about 0.9 x this. Scoring only, no effect on handling.",
+   "loc": "chassis->+0x1ec",
+   "off": "0xc8",
+   "type": "f32_rad_as_deg",
+   "unit": "deg",
+   "min": 1,
+   "max": 90,
+   "step": 0.5,
+   "stock_example": 28.6,
+   "apply": "live",
+   "risk": "None (scoring only).",
+   "source": "06-drift-meter.md 7/12; DrivingRespect [chassis+0x1ec] (\"RSPT\", stored 0x27fc68)",
+   "goals": {
+    "drift": "Up: harder to score. Down: easier."
+   },
+   "goals_best": {
+    "drift": "down"
+   },
+   "ends": {
+    "low": "Counts early",
+    "high": "Needs big angle"
+   },
+   "proof": [
+    [
+     "0x2917b4",
+     "0xc8"
+    ],
+    [
+     "0x27fc68",
+     "0x1ec"
+    ]
+   ]
+  },
+  {
+   "id": "dr_physical",
+   "group": "Drift scoring",
+   "label": "Air / two-wheel points",
+   "desc": "PHYSICAL-POINTS: points per second for air and two-wheel moves. Scoring only, no effect on handling.",
+   "loc": "chassis->+0x1ec",
+   "off": "0xf4",
+   "type": "f32",
+   "unit": "pts/s",
+   "min": 0,
+   "max": 2000,
+   "step": 10,
+   "stock_example": 400,
+   "apply": "live",
+   "risk": "None (scoring only).",
+   "source": "06-drift-meter.md 7/12; DrivingRespect [chassis+0x1ec] (\"RSPT\", stored 0x27fc68)",
+   "goals": {
+    "drift": "Up: more drift points. Down: fewer."
+   },
+   "goals_best": {
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Few",
+    "high": "Many"
+   },
+   "proof": [
+    [
+     "0x292594",
+     "0xf4"
+    ],
+    [
+     "0x27fc68",
+     "0x1ec"
+    ]
+   ]
+  },
+  {
+   "id": "dr_move",
+   "group": "Drift scoring",
+   "label": "Instant move points",
+   "desc": "MOVE-POINTS: one-off points for instant moves (landing, good shift...). Scoring only, no effect on handling.",
+   "loc": "chassis->+0x1ec",
+   "off": "0xf8",
+   "type": "f32",
+   "unit": "pts",
+   "min": 0,
+   "max": 1000,
+   "step": 5,
+   "stock_example": 50,
+   "apply": "live",
+   "risk": "None (scoring only).",
+   "source": "06-drift-meter.md 7/12; DrivingRespect [chassis+0x1ec] (\"RSPT\", stored 0x27fc68)",
+   "goals": {
+    "drift": "Up: more drift points. Down: fewer."
+   },
+   "goals_best": {
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Few",
+    "high": "Many"
+   },
+   "proof": [
+    [
+     "0x292634",
+     "0xf8"
+    ],
+    [
+     "0x27fc68",
+     "0x1ec"
+    ]
+   ]
+  },
+  {
+   "id": "dr_b_acceloff",
+   "group": "Drift scoring",
+   "label": "Accel-off bonus",
+   "desc": "Drift points are multiplied by this while the move is the active technique. Scoring only.",
+   "loc": "chassis->+0x1ec",
+   "off": "0x108",
+   "type": "f32",
+   "unit": "x",
+   "min": 0,
+   "max": 10,
+   "step": 0.1,
+   "stock_example": 2.0,
+   "apply": "live",
+   "risk": "None.",
+   "source": "06-drift-meter.md 12.5; single bonus read lwc1 0x100(base+4*type) at 0x292384 (type 2..13)",
+   "goals": {
+    "drift": "Up: this move scores more. Down: less."
+   },
+   "goals_best": {
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Less bonus",
+    "high": "More bonus"
+   },
+   "proof": [
+    [
+     "0x292384",
+     "0x100"
+    ]
+   ],
+   "note": "proof is the indexed read 0x100+4*type"
+  },
+  {
+   "id": "dr_b_kansei",
+   "group": "Drift scoring",
+   "label": "Kansei bonus",
+   "desc": "Drift points are multiplied by this while the move is the active technique. Scoring only.",
+   "loc": "chassis->+0x1ec",
+   "off": "0x10c",
+   "type": "f32",
+   "unit": "x",
+   "min": 0,
+   "max": 10,
+   "step": 0.1,
+   "stock_example": 1.0,
+   "apply": "live",
+   "risk": "None.",
+   "source": "06-drift-meter.md 12.5; single bonus read lwc1 0x100(base+4*type) at 0x292384 (type 2..13)",
+   "goals": {
+    "drift": "Up: this move scores more. Down: less."
+   },
+   "goals_best": {
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Less bonus",
+    "high": "More bonus"
+   },
+   "proof": [
+    [
+     "0x292384",
+     "0x100"
+    ]
+   ],
+   "note": "proof is the indexed read 0x100+4*type"
+  },
+  {
+   "id": "dr_b_braking",
+   "group": "Drift scoring",
+   "label": "Braking-drift bonus",
+   "desc": "Drift points are multiplied by this while the move is the active technique. Scoring only.",
+   "loc": "chassis->+0x1ec",
+   "off": "0x110",
+   "type": "f32",
+   "unit": "x",
+   "min": 0,
+   "max": 10,
+   "step": 0.1,
+   "stock_example": 2.0,
+   "apply": "live",
+   "risk": "None.",
+   "source": "06-drift-meter.md 12.5; single bonus read lwc1 0x100(base+4*type) at 0x292384 (type 2..13)",
+   "goals": {
+    "drift": "Up: this move scores more. Down: less."
+   },
+   "goals_best": {
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Less bonus",
+    "high": "More bonus"
+   },
+   "proof": [
+    [
+     "0x292384",
+     "0x100"
+    ]
+   ],
+   "note": "proof is the indexed read 0x100+4*type"
+  },
+  {
+   "id": "dr_b_ebrake",
+   "group": "Drift scoring",
+   "label": "Side-brake bonus",
+   "desc": "Drift points are multiplied by this while the move is the active technique. Scoring only.",
+   "loc": "chassis->+0x1ec",
+   "off": "0x114",
+   "type": "f32",
+   "unit": "x",
+   "min": 0,
+   "max": 10,
+   "step": 0.1,
+   "stock_example": 1.0,
+   "apply": "live",
+   "risk": "None.",
+   "source": "06-drift-meter.md 12.5; single bonus read lwc1 0x100(base+4*type) at 0x292384 (type 2..13)",
+   "goals": {
+    "drift": "Up: this move scores more. Down: less."
+   },
+   "goals_best": {
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Less bonus",
+    "high": "More bonus"
+   },
+   "proof": [
+    [
+     "0x292384",
+     "0x100"
+    ]
+   ],
+   "note": "proof is the indexed read 0x100+4*type"
+  },
+  {
+   "id": "dr_b_power",
+   "group": "Drift scoring",
+   "label": "Power-over bonus",
+   "desc": "Drift points are multiplied by this while the move is the active technique. Scoring only.",
+   "loc": "chassis->+0x1ec",
+   "off": "0x118",
+   "type": "f32",
+   "unit": "x",
+   "min": 0,
+   "max": 10,
+   "step": 0.1,
+   "stock_example": 1.5,
+   "apply": "live",
+   "risk": "None.",
+   "source": "06-drift-meter.md 12.5; single bonus read lwc1 0x100(base+4*type) at 0x292384 (type 2..13)",
+   "goals": {
+    "drift": "Up: this move scores more. Down: less."
+   },
+   "goals_best": {
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Less bonus",
+    "high": "More bonus"
+   },
+   "proof": [
+    [
+     "0x292384",
+     "0x100"
+    ]
+   ],
+   "note": "proof is the indexed read 0x100+4*type"
+  },
+  {
+   "id": "dr_b_feint",
+   "group": "Drift scoring",
+   "label": "Feint bonus",
+   "desc": "Drift points are multiplied by this while the move is the active technique. Scoring only.",
+   "loc": "chassis->+0x1ec",
+   "off": "0x11c",
+   "type": "f32",
+   "unit": "x",
+   "min": 0,
+   "max": 10,
+   "step": 0.1,
+   "stock_example": 2.5,
+   "apply": "live",
+   "risk": "None.",
+   "source": "06-drift-meter.md 12.5; single bonus read lwc1 0x100(base+4*type) at 0x292384 (type 2..13)",
+   "goals": {
+    "drift": "Up: this move scores more. Down: less."
+   },
+   "goals_best": {
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Less bonus",
+    "high": "More bonus"
+   },
+   "proof": [
+    [
+     "0x292384",
+     "0x100"
+    ]
+   ],
+   "note": "proof is the indexed read 0x100+4*type"
+  },
+  {
+   "id": "dr_b_manji",
+   "group": "Drift scoring",
+   "label": "Manji (swaying) bonus",
+   "desc": "Drift points are multiplied by this while the move is the active technique. Scoring only.",
+   "loc": "chassis->+0x1ec",
+   "off": "0x128",
+   "type": "f32",
+   "unit": "x",
+   "min": 0,
+   "max": 10,
+   "step": 0.1,
+   "stock_example": 3.0,
+   "apply": "live",
+   "risk": "None.",
+   "source": "06-drift-meter.md 12.5; single bonus read lwc1 0x100(base+4*type) at 0x292384 (type 2..13)",
+   "goals": {
+    "drift": "Up: this move scores more. Down: less."
+   },
+   "goals_best": {
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Less bonus",
+    "high": "More bonus"
+   },
+   "proof": [
+    [
+     "0x292384",
+     "0x100"
+    ]
+   ],
+   "note": "proof is the indexed read 0x100+4*type"
+  },
+  {
+   "id": "dr_b_clutch",
+   "group": "Drift scoring",
+   "label": "Clutch-kick bonus",
+   "desc": "Drift points are multiplied by this while the move is the active technique. Scoring only.",
+   "loc": "chassis->+0x1ec",
+   "off": "0x130",
+   "type": "f32",
+   "unit": "x",
+   "min": 0,
+   "max": 10,
+   "step": 0.1,
+   "stock_example": 3.0,
+   "apply": "live",
+   "risk": "None.",
+   "source": "06-drift-meter.md 12.5; single bonus read lwc1 0x100(base+4*type) at 0x292384 (type 2..13)",
+   "goals": {
+    "drift": "Up: this move scores more. Down: less."
+   },
+   "goals_best": {
+    "drift": "up"
+   },
+   "ends": {
+    "low": "Less bonus",
+    "high": "More bonus"
+   },
+   "proof": [
+    [
+     "0x292384",
+     "0x100"
+    ]
+   ],
+   "note": "proof is the indexed read 0x100+4*type"
+  },
+  {
+   "id": "dr_min_chain",
+   "group": "Drift scoring",
+   "label": "Minimum chain to score",
+   "desc": "DRIFT-RESPECT-MIN copy in the points buffer: a move must reach this many points to show and bank.",
+   "loc": "car->+0x82c",
+   "off": "0x90",
+   "type": "f32",
+   "unit": "pts",
+   "min": 0,
+   "max": 1000,
+   "step": 5,
+   "stock_example": 50,
+   "apply": "live (re-copied from DrivingRespect+0xd8 on reset 0x290df0)",
+   "risk": "None.",
+   "source": "06-drift-meter.md 12.5; PointsBuffer reads 0x30c39c (lwc1 0x90); written 0x290df0",
+   "goals": {
+    "drift": "Up: short drifts are thrown away. Down: every drift counts."
+   },
+   "goals_best": {
+    "drift": "down"
+   },
+   "ends": {
+    "low": "Everything counts",
+    "high": "Only long chains"
+   },
+   "proof": [
+    [
+     "0x30c39c",
+     "0x90"
+    ],
+    [
+     "0x290df0",
+     "0x90"
+    ],
+    [
+     "0x290de8",
+     "0xd8"
+    ]
+   ]
+  },
+  {
+   "id": "meter_fullscale",
+   "group": "Drift meter",
+   "label": "Meter full-scale angle",
+   "desc": "The drift needle reaches the end of the gauge at this angle (deg). The number shown is not clamped.",
+   "loc": "abs:5ca2e4->+0x0",
+   "off": "0x1f8",
+   "type": "f32",
+   "unit": "deg",
+   "min": 10,
+   "max": 180,
+   "step": 1,
+   "stock_example": 90,
+   "apply": "live (pointer is 0 in events without a drift meter)",
+   "risk": "Never 0 (divides at 0x16b978 path).",
+   "source": "06-drift-meter.md 2/4; SetAngle 0x16b838 / Update 0x16b978 (lwc1 0x1f8); meter = [hud[0]+0x2c4], hud[0]=0x5ca020 (0x14cb0c)",
+   "goals": {
+    "drift": "Up: needle moves less per degree. Down: needle maxes out at smaller angles."
+   },
+   "goals_best": {
+    "drift": "balance"
+   },
+   "ends": {
+    "low": "Needle maxes early",
+    "high": "Needle maxes late"
+   },
+   "proof": [
+    [
+     "0x16b838",
+     "0x1f8"
+    ],
+    [
+     "0x16b978",
+     "0x1f8"
+    ],
+    [
+     "0x14cb0c",
+     "0x2c4"
+    ]
+   ]
+  },
+  {
+   "id": "gl_scale",
+   "group": "Global physics",
+   "label": "Global physics scale (0x4da998)",
+   "desc": "A data constant (1.0) loaded with lwc1 from 0x4da998. Live uses: steering response curve speed (a = 0.5 + 4.5 x clamp(v / (50 x this))), drift push speed term, top-speed value and the HUD speedometer (mph / this). Parse-time uses (torque, PDX1/PDY1, inertia, final drive, clutch) only matter for cars loaded afterwards.",
+   "loc": "abs:4da998",
+   "off": "0x0",
+   "type": "f32",
+   "unit": "x",
+   "min": 0.5,
+   "max": 2,
+   "step": 0.05,
+   "stock_example": 1.0,
+   "apply": "live",
+   "risk": "SHARED by unrelated code: changing it also changes the HUD speedometer reading (0x14c41c, 0x14c770) and the top-speed/drift-push maths (0x27fd2c, 0x2808b8), and scales engine torque, flywheel, grip and gear ratios of any car parsed after the change. Never 0 (divided by).",
+   "source": "data constant; lwc1 -0x5668(lui 0x4e) at 0x28b5b4 (steering), 0x2808b8, 0x27fd2c, 0x14c41c, 0x14c770, parse 0x286cf0 0x286f94 0x28c37c 0x28c398 0x298d70 0x29aeb8 0x29c234 0x29d72c 0x2a1274",
+   "goals": {
+    "grip": "Up: the steering curve stays sharp to higher speeds. Down: it flattens sooner."
+   },
+   "goals_best": {
+    "grip": "balance"
+   },
+   "ends": {
+    "low": "Flatter steering",
+    "high": "Sharper steering"
+   },
+   "proof": [
+    [
+     "0x28b5b4",
+     "-0x5668"
+    ],
+    [
+     "0x14c770",
+     "-0x5668"
+    ],
+    [
+     "0x2808b8",
+     "-0x5668"
+    ]
+   ],
+   "data_proof": "lui $v0,0x4e ; lwc1 $f0,-0x5668($v0) -> 0x4da998 (value 0x3f800000)"
+  }
+ ],
+ "tables": [
+  {
+   "id": "tbl_torque_curve",
+   "group": "Engine",
+   "label": "Torque curve",
+   "desc": "Engine torque (N·m) at each rpm; the game draws straight lines between points. The first point is idle rpm and the last is max rpm. Raising a point gives more pull at that rpm.",
+   "kind": "pairs",
+   "loc": "engine",
+   "off": "0xa0",
+   "inline": false,
+   "countOff": "0xa4",
+   "stride": 8,
+   "cols": [
+    {
+     "label": "rpm",
+     "off": "0x0",
+     "type": "f32",
+     "step": 50
+    },
+    {
+     "label": "N·m",
+     "off": "0x4",
+     "type": "f32",
+     "step": 1
+    }
+   ],
+   "apply": "live for torque; then run the after calls: 0x286568(engine) recomputes peak hp/torque of the working curve (0xd0/0xd4: NOS cap, clutch cap); the stock peaks 0xd8..0xe4 are only read by the upgrade reshape at car init (0x287680) and need no recompute and 0x288a30(engine) rebuilds the 10 power bands at 0x158 (auto upshift rpm, launch-control target, good-shift window). The stock copy is a second Table2d at engine+0x1d0 (same layout) for reset. Point count is fixed (no realloc): edit existing points only.",
+   "after": [
+    {
+     "call": "0x286568",
+     "args": [
+      "engine"
+     ]
+    },
+    {
+     "call": "0x288a30",
+     "args": [
+      "engine"
+     ]
+    }
+   ],
+   "risk": "rpm values must keep increasing (the lookup is a binary search). Moving the last rpm changes the limiter. Huge torque can trigger the wheel-spin hang.",
+   "source": "01-engine.md 2.1; Table2d first x 0x146d08 (lw 0(a0)), last x 0x146d18 (lw 4(a0) count); band builder 0x288a30 uses engine+0xa0",
+   "stock_example": [
+    [
+     850,
+     146.4
+    ],
+    [
+     1992,
+     262.7
+    ],
+    [
+     3500,
+     292.9
+    ],
+    [
+     4200,
+     293.5
+    ],
+    [
+     4900,
+     293.5
+    ],
+    [
+     5600,
+     293.6
+    ],
+    [
+     6300,
+     294.7
+    ],
+    [
+     7000,
+     259.9
+    ],
+    [
+     7700,
+     141.4
+    ]
+   ],
+   "stockCopyOff": "0x1d0",
+   "vt": "0x569140",
+   "proof": [
+    [
+     "0x146d08",
+     "0x0"
+    ],
+    [
+     "0x146d18",
+     "0x4"
+    ],
+    [
+     "0x287858",
+     "0x1d0"
+    ]
+   ],
+   "goals": {
+    "drag": "Up: more pull across the rev range. Down: weaker.",
+    "launch": "Up at low rpm: stronger launch but more wheelspin. Down: softer.",
+    "drift": "Up at mid rpm: easier to keep wheels spinning mid-drift. Down: drifts bog.",
+    "highway": "Up near redline: more top speed. Down: less."
+   },
+   "goals_best": {
+    "drag": "up",
+    "launch": "balance",
+    "drift": "up",
+    "highway": "up"
+   },
+   "ends": {
+    "low": "Less torque",
+    "high": "More torque"
+   }
+  },
+  {
+   "id": "tbl_gears",
+   "group": "Gearbox",
+   "label": "Gear ratios",
+   "desc": "Forward gear ratios, 1st first. The wheel torque is engine torque x gear x final drive. Reverse is stored separately (negated, gearbox+0xec) and the final drive at +0xf0; neutral is 0.",
+   "kind": "floats",
+   "loc": "gearbox",
+   "off": "0xb4",
+   "inline": true,
+   "countOff": "0xb0",
+   "stride": 4,
+   "cols": [
+    {
+     "label": "Ratio",
+     "off": "0x0",
+     "type": "f32",
+     "step": 0.01
+    }
+   ],
+   "apply": "live",
+   "after": [],
+   "risk": "No ratio may be 0 (road-speed maths divide by ratio x final). Array holds 13 slots; the count field 0xb0 says how many are used.",
+   "source": "04-transmission.md field map; GetTotalRatio 0x29807c (lwc1 0xb4 + 4*(gear-1)); count read 0x297d40",
+   "stock_example": [
+    3.48,
+    2.01,
+    1.39,
+    1.0,
+    0.72
+   ],
+   "vt": "0x56c300",
+   "proof": [
+    [
+     "0x29807c",
+     "0xb4"
+    ],
+    [
+     "0x297d40",
+     "0xb0"
+    ]
+   ],
+   "goals": {
+    "drag": "Up (low gears): punchier. Down: smoother, fewer shifts.",
+    "highway": "Up (top gear): lower top speed. Down (top gear): higher top speed if the engine can pull it.",
+    "drift": "Up (closer ratios): rpm stays in the power band mid-drift. Down (wide ratios): rpm drops out of the band after a shift.",
+    "launch": "Up (1st): harder launch, more wheelspin. Down (1st): softer launch."
+   },
+   "goals_best": {
+    "drag": "balance",
+    "highway": "down",
+    "drift": "balance",
+    "launch": "balance"
+   },
+   "ends": {
+    "low": "Long gears",
+    "high": "Short gears"
+   }
+  },
+  {
+   "id": "tbl_pacejka",
+   "group": "Tyres",
+   "label": "Pacejka coefficients",
+   "desc": "The 47 Magic Formula numbers of the tyre (MF 5.x names). PDX1 = forward peak grip, PDY1 = side peak grip (negative), PKY1 = cornering stiffness (negative), PCY1/PEY1 = shape of the side-force curve past the peak, RBX1/RBY1 = how slip in one direction cuts grip in the other. The fast path ignores PEX4, PVX1/2, RBX2, RHX1, RHY1, RVY1..6.",
+   "kind": "floats",
+   "loc": "tyredata{a}{w}",
+   "perWheel": [
+    "00",
+    "01",
+    "10",
+    "11"
+   ],
+   "off": "0x594",
+   "inline": true,
+   "count": 47,
+   "stride": 4,
+   "cols": [
+    {
+     "label": "Value",
+     "off": "0x0",
+     "type": "f32",
+     "step": 0.001
+    }
+   ],
+   "rowLabels": [
+    "PCX1",
+    "PDX1",
+    "PDX2",
+    "PEX1",
+    "PEX2",
+    "PEX3",
+    "PEX4",
+    "PKX1",
+    "PKX2",
+    "PKX3",
+    "PHX1",
+    "PHX2",
+    "PVX1",
+    "PVX2",
+    "PCY1",
+    "PDY1",
+    "PDY2",
+    "PDY3",
+    "PEY1",
+    "PEY2",
+    "PEY3",
+    "PEY4",
+    "PKY1",
+    "PKY2",
+    "PKY3",
+    "PHY1",
+    "PHY2",
+    "PHY3",
+    "PVY1",
+    "PVY2",
+    "PVY3",
+    "PVY4",
+    "RBX1",
+    "RBX2",
+    "RCX1",
+    "RHX1",
+    "RBY1",
+    "RBY2",
+    "RBY3",
+    "RCY1",
+    "RHY1",
+    "RVY1",
+    "RVY2",
+    "RVY3",
+    "RVY4",
+    "RVY5",
+    "RVY6"
+   ],
+   "rows": [
+    {
+     "name": "PCX1",
+     "off": "0x594",
+     "rel": "+0x0"
+    },
+    {
+     "name": "PDX1",
+     "off": "0x598",
+     "rel": "+0x4"
+    },
+    {
+     "name": "PDX2",
+     "off": "0x59c",
+     "rel": "+0x8"
+    },
+    {
+     "name": "PEX1",
+     "off": "0x5a0",
+     "rel": "+0xc"
+    },
+    {
+     "name": "PEX2",
+     "off": "0x5a4",
+     "rel": "+0x10"
+    },
+    {
+     "name": "PEX3",
+     "off": "0x5a8",
+     "rel": "+0x14"
+    },
+    {
+     "name": "PEX4",
+     "off": "0x5ac",
+     "rel": "+0x18"
+    },
+    {
+     "name": "PKX1",
+     "off": "0x5b0",
+     "rel": "+0x1c"
+    },
+    {
+     "name": "PKX2",
+     "off": "0x5b4",
+     "rel": "+0x20"
+    },
+    {
+     "name": "PKX3",
+     "off": "0x5b8",
+     "rel": "+0x24"
+    },
+    {
+     "name": "PHX1",
+     "off": "0x5bc",
+     "rel": "+0x28"
+    },
+    {
+     "name": "PHX2",
+     "off": "0x5c0",
+     "rel": "+0x2c"
+    },
+    {
+     "name": "PVX1",
+     "off": "0x5c4",
+     "rel": "+0x30"
+    },
+    {
+     "name": "PVX2",
+     "off": "0x5c8",
+     "rel": "+0x34"
+    },
+    {
+     "name": "PCY1",
+     "off": "0x5cc",
+     "rel": "+0x38"
+    },
+    {
+     "name": "PDY1",
+     "off": "0x5d0",
+     "rel": "+0x3c"
+    },
+    {
+     "name": "PDY2",
+     "off": "0x5d4",
+     "rel": "+0x40"
+    },
+    {
+     "name": "PDY3",
+     "off": "0x5d8",
+     "rel": "+0x44"
+    },
+    {
+     "name": "PEY1",
+     "off": "0x5dc",
+     "rel": "+0x48"
+    },
+    {
+     "name": "PEY2",
+     "off": "0x5e0",
+     "rel": "+0x4c"
+    },
+    {
+     "name": "PEY3",
+     "off": "0x5e4",
+     "rel": "+0x50"
+    },
+    {
+     "name": "PEY4",
+     "off": "0x5e8",
+     "rel": "+0x54"
+    },
+    {
+     "name": "PKY1",
+     "off": "0x5ec",
+     "rel": "+0x58"
+    },
+    {
+     "name": "PKY2",
+     "off": "0x5f0",
+     "rel": "+0x5c"
+    },
+    {
+     "name": "PKY3",
+     "off": "0x5f4",
+     "rel": "+0x60"
+    },
+    {
+     "name": "PHY1",
+     "off": "0x5f8",
+     "rel": "+0x64"
+    },
+    {
+     "name": "PHY2",
+     "off": "0x5fc",
+     "rel": "+0x68"
+    },
+    {
+     "name": "PHY3",
+     "off": "0x600",
+     "rel": "+0x6c"
+    },
+    {
+     "name": "PVY1",
+     "off": "0x604",
+     "rel": "+0x70"
+    },
+    {
+     "name": "PVY2",
+     "off": "0x608",
+     "rel": "+0x74"
+    },
+    {
+     "name": "PVY3",
+     "off": "0x60c",
+     "rel": "+0x78"
+    },
+    {
+     "name": "PVY4",
+     "off": "0x610",
+     "rel": "+0x7c"
+    },
+    {
+     "name": "RBX1",
+     "off": "0x614",
+     "rel": "+0x80"
+    },
+    {
+     "name": "RBX2",
+     "off": "0x618",
+     "rel": "+0x84"
+    },
+    {
+     "name": "RCX1",
+     "off": "0x61c",
+     "rel": "+0x88"
+    },
+    {
+     "name": "RHX1",
+     "off": "0x620",
+     "rel": "+0x8c"
+    },
+    {
+     "name": "RBY1",
+     "off": "0x624",
+     "rel": "+0x90"
+    },
+    {
+     "name": "RBY2",
+     "off": "0x628",
+     "rel": "+0x94"
+    },
+    {
+     "name": "RBY3",
+     "off": "0x62c",
+     "rel": "+0x98"
+    },
+    {
+     "name": "RCY1",
+     "off": "0x630",
+     "rel": "+0x9c"
+    },
+    {
+     "name": "RHY1",
+     "off": "0x634",
+     "rel": "+0xa0"
+    },
+    {
+     "name": "RVY1",
+     "off": "0x638",
+     "rel": "+0xa4"
+    },
+    {
+     "name": "RVY2",
+     "off": "0x63c",
+     "rel": "+0xa8"
+    },
+    {
+     "name": "RVY3",
+     "off": "0x640",
+     "rel": "+0xac"
+    },
+    {
+     "name": "RVY4",
+     "off": "0x644",
+     "rel": "+0xb0"
+    },
+    {
+     "name": "RVY5",
+     "off": "0x648",
+     "rel": "+0xb4"
+    },
+    {
+     "name": "RVY6",
+     "off": "0x64c",
+     "rel": "+0xb8"
+    }
+   ],
+   "header_fields": {
+    "TK": "0x558",
+    "TD (unused)": "0x55c",
+    "LATB (unused)": "0x560",
+    "LONGB (unused)": "0x564",
+    "FZ0": "0x70",
+    "FZMAX": "0x74",
+    "MUNOMY (full path only)": "0x568",
+    "MUNOMX (full path only)": "0x56c"
+   },
+   "apply": "live, but cached B/C/D/E only refresh when load moves 50 N or camber changes: poke 0 into tyre{a}{w}+0xe8 for each of the 4 tyres (one-shot), or set tyredata+0x58c = 1 (refresh every step). Then rebuild the peak-slip tables (used by the slip limiter and the steering lock) with after: 0x28fab8(tyredata) - a heavy one-shot that builds a temporary tyre, sets and clears 0x58c itself.",
+   "after": [
+    {
+     "call": "0x28fab8",
+     "args": [
+      "tyredata{a}{w}"
+     ]
+    }
+   ],
+   "risk": "The tyre model object is shared by every wheel (and every car) that uses the same WHEEL name: on the RX-7 TRS all four wheels use \"97RX7TRSR-FRONT\", so one edit changes all four, and also AI cars of the same model. 0x28fab8 runs 101 loads x ~150 force evaluations: call it once per edit, not per frame (believed safe: self-contained alloc/free; not run-tested while driving). Setting PVX1/PVX2/RBX2/PEX4/RHY1/RVY1-4/RVY6 non-zero does NOT switch to the full path (mode is chosen at parse). PDY1 must stay negative and PDX1 positive. Dividing terms: Bx = Kx/(Cx·Dx), By = Ky/(Cy·Dy): PCX1, PCY1, PDX1, PDY1 must never be 0.",
+   "source": "03-tyre.md 2.4; fast path 0x28ce20: base s1 = model+0x594 (0x28ce40); PCX1 0x28cfc4 (+0), PDX1 0x28cfa8 (+4), PHX1 0x28cf94 (+0x28), PKX1 0x28d008 (+0x1c)",
+   "stock_example": [
+    1.6374,
+    2.03,
+    -0.049612,
+    0.57842,
+    -0.049158,
+    0.059858,
+    0.0,
+    20.169,
+    -0.31382,
+    0.2821,
+    -0.0016927,
+    0.000428,
+    0.0,
+    0.0,
+    1.2959,
+    -1.69,
+    0.1829,
+    -4.4979,
+    -1.025,
+    0.65572,
+    -0.64441,
+    -12.745,
+    -12.963,
+    1.7124,
+    0.22167,
+    0.003449,
+    -0.002989,
+    0.045213,
+    0.045525,
+    -0.033543,
+    -0.17262,
+    -0.45111,
+    2.0,
+    0.0,
+    1.0,
+    0.0,
+    2.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.9,
+    0.0
+   ],
+   "vt": "0x569fd8",
+   "proof": [
+    [
+     "0x28cfc4",
+     "0x0"
+    ],
+    [
+     "0x28cfa8",
+     "0x4"
+    ],
+    [
+     "0x28cf94",
+     "0x28"
+    ],
+    [
+     "0x28d008",
+     "0x1c"
+    ],
+    [
+     "0x28cff4",
+     "0x24"
+    ]
+   ],
+   "goals": {
+    "grip": "Up |PDY1|: more cornering grip. Down: less.",
+    "drift": "Up (sharper drop past the peak via PCY1/PEY1): snappy slides. Down (flatter): slides stay controllable.",
+    "launch": "Up PDX1: more traction. Down: wheelspin.",
+    "stability": "Up |PKY1|: sharper, more nervous response. Down: lazier but forgiving."
+   },
+   "goals_best": {
+    "grip": "up",
+    "drift": "balance",
+    "launch": "up",
+    "stability": "balance"
+   },
+   "ends": {
+    "low": "Less grip",
+    "high": "More grip"
+   }
+  },
+  {
+   "id": "tbl_kinematics",
+   "group": "Suspension",
+   "label": "Suspension kinematics polynomial",
+   "desc": "How the wheel moves as the suspension compresses: for travel u (from static sag), each channel = sum of row[k] x u^k. Channels: track change (m), wheelbase change (m), camber change and toe (bump steer). Front RX-7: -45° camber and -33° toe per metre of bump.",
+   "kind": "floats",
+   "loc": "kin{a}",
+   "perAxle": [
+    "0",
+    "1"
+   ],
+   "off": "0x78",
+   "inline": false,
+   "countOff": "0x7c",
+   "stride": 16,
+   "cols": [
+    {
+     "label": "dx (m)",
+     "off": "0x0",
+     "type": "f32",
+     "step": 0.01
+    },
+    {
+     "label": "dz (m)",
+     "off": "0x4",
+     "type": "f32",
+     "step": 0.01
+    },
+    {
+     "label": "camber",
+     "off": "0x8",
+     "type": "f32_rad_as_deg",
+     "step": 0.5
+    },
+    {
+     "label": "toe",
+     "off": "0xc",
+     "type": "f32_rad_as_deg",
+     "step": 0.5
+    }
+   ],
+   "apply": "live (only used when DATA-TYPE is POLYNOMIAL, kin+0x74 == 1). Row 0 = constant, row 1 = linear, ... (max 4 rows).",
+   "after": [],
+   "risk": "Big toe terms make the car dart over bumps. Count must stay <= 4 (jump table 0x565a80).",
+   "source": "02-suspension.md 8; Kinematics::Update 0x27d260 (lw 0x7c count), 0x27d290 (lw 0x78 array), stride 0x10 at 0x27d2e4",
+   "stock_example": {
+    "axle0": [
+     [
+      0,
+      0,
+      0,
+      0
+     ],
+     [
+      -0.2,
+      0,
+      -45.0,
+      -33.0
+     ]
+    ],
+    "axle1": [
+     [
+      0,
+      0,
+      0,
+      0
+     ],
+     [
+      -0.08,
+      0,
+      -33.0,
+      0
+     ]
+    ]
+   },
+   "vt": "0x565ce8",
+   "proof": [
+    [
+     "0x27d260",
+     "0x7c"
+    ],
+    [
+     "0x27d290",
+     "0x78"
+    ],
+    [
+     "0x27d2e4",
+     "0x10"
+    ]
+   ],
+   "goals": {
+    "grip": "Up (more camber gain in row 1): the loaded tyre stays flatter in roll. Down: less camber gain.",
+    "stability": "Up (more bump-steer in row 1 toe): darty over bumps. Down (toe toward 0): steadier over bumps.",
+    "drift": "Up (rear toe-in gain): rear steers itself straight under squat. Down: rear steers out, looser."
+   },
+   "goals_best": {
+    "grip": "balance",
+    "stability": "down",
+    "drift": "balance"
+   },
+   "ends": {
+    "low": "Less change",
+    "high": "More change"
+   }
+  }
+ ],
+ "not_tunable": [
+  {
+   "id": "nt_dt",
+   "label": "Physics time step dt (0x4ddbb4)",
+   "reason": "Data, but overwritten every physics step by SetDt 0x390520 from the step length 0x5c56a0, so a poke is lost at once. The step length 0x5c56a0 (1/59.94, set at boot 0x34fc84) is also data, but changing it changes how many physics steps run per frame (1..10) and every per-frame constant (shift times, filters): dangerous, can stall the frame loop. Not offered."
+  },
+  {
+   "id": "nt_gravity",
+   "label": "Gravity",
+   "reason": "PhysX scene gravity (0,-9.81,0) is built from code immediates into the scene descriptor (0x30ff40) at scene creation; the game's own 9.8 (static sag 0x279300 lui/ori 0x411ccccd) is also an immediate. No live data copy."
+  },
+  {
+   "id": "nt_nos_cap",
+   "label": "NOS 200 hp cap / 21000 N push",
+   "reason": "Immediates: lui 0x4348 at 0x288788 (200.0) and lui/ori 0x46a41000 at 0x28880c (21000). Tune via engine+0xd0 (peak hp) instead."
+  },
+  {
+   "id": "nt_limiter_half",
+   "label": "Limiter 50% torque fall / 0.9 lock band",
+   "reason": "Immediates in TorqueAtRPM and the clutch (0x3f000000, 0x3f666666)."
+  },
+  {
+   "id": "nt_throttle_deadzone",
+   "label": "Throttle 10% dead zone, 0.18 idle throttle",
+   "reason": "Immediates (0x3dcccccd at 0x286988 area, 0x3e3851ec)."
+  },
+  {
+   "id": "nt_clutch_consts",
+   "label": "Clutch 10% minimum capacity, 1.1/1.5 x Te bounds, 20 rad/s lock, 3 x peak torque cap",
+   "reason": "Immediates in RaceCarClutch::Update (0x29d100 lui/ori 0x3dcccccd, 0x29d144 lui 0x4040)."
+  },
+  {
+   "id": "nt_pacejka_cache",
+   "label": "Pacejka 50 N recompute threshold",
+   "reason": "Immediate lui 0x4248 at 0x28ce90. Use tyredata+0x58c or tyre+0xe8 instead."
+  },
+  {
+   "id": "nt_spin_taps",
+   "label": "Wheel spin filter taps 0.12/0.18/0.70, omega clamp 1000 rad/s",
+   "reason": "Immediates in RaceCarTyre::IntegrateSpin (0x330488 0x3df5c28f, 0x33049c 0x3e3851ec, 0x3304b8 0x3f333333, 0x330534 0x447a0000). Only tyre+0x1e0 (extra gain) is data."
+  },
+  {
+   "id": "nt_drift_boost_gain",
+   "label": "DRIFT-PHYSICS 0.4 side-grip gain",
+   "reason": "The tyre Configure multiplies by the register loaded from immediate 0x3ecccccd (0x3301dc), not by tyre+0x1c4, so editing +0x1c4 changes nothing. Edit tyre+0x114 directly."
+  },
+  {
+   "id": "nt_steer_deadzone",
+   "label": "Pad steering dead zone (48/128 = 37.5%) and response-curve dead zone 0.1, curve 50 m/s, unwind x13, exp(-v/200)",
+   "reason": "Immediates in the pad reader 0x21af30 and PlayerTarget 0x28a680 / curve 0x28b580 (lui 0x4248, 0x3dcccccd, 0x41400000...). Only the steering object fields listed are data."
+  },
+  {
+   "id": "nt_ackermann_factor",
+   "label": "Ackermann 50% factor",
+   "reason": "Immediate 0.5 (lui 0x3f00 at 0x28b7a0)."
+  },
+  {
+   "id": "nt_steer_speed_curve",
+   "label": "Steering speed curve vs speed (exp(-v/200)) and lock fade 20 m/s",
+   "reason": "Immediates in 0x28a680; tune with steering +0x84/+0xbc instead."
+  },
+  {
+   "id": "nt_arcade_assist_hook",
+   "label": "Assist hook 0x290918 (x1.3/x1.1)",
+   "reason": "Code path skipped for physics type 1; constants are immediates."
+  },
+  {
+   "id": "nt_drift_meter_logic",
+   "label": "Drift meter show/hide thresholds (0.2 rad growth, x1.2 rate, on 0.5 / off 0.1, 8 and 16 m/s, 4.5 m/s angle gate)",
+   "reason": "All immediates in DriftState 0x2802c8 / DriftFlags 0x2806c8 / DriftAngle 0x14d870 (e.g. 0x2803fc 0.2, 0x280458 1.2, 0x2804fc 16, 0x280518 8, 0x14d894 4.5)."
+  },
+  {
+   "id": "nt_drift_points_formula",
+   "label": "Drift chain timeout 2.5 s, impact 100 / 1500 ms lockout, 0.8 confidence",
+   "reason": "Immediates in DrivingRespect::Update 0x291f90."
+  },
+  {
+   "id": "nt_centre_of_mass",
+   "label": "Centre of mass",
+   "reason": "mover+0x150 is a game-side copy used for downforce levers and static loads; the PhysX body CoM is set at spawn through float-vector calls (no data copy the code re-reads, and call() cannot pass floats). Poking +0x150 alone would desync game and PhysX."
+  },
+  {
+   "id": "nt_yaw_inertia",
+   "label": "Body inertia (INERTIA)",
+   "reason": "Set into the PhysX body at spawn via float-vector actor calls; no float-free setter exists for call()."
+  },
+  {
+   "id": "nt_drift_push",
+   "label": "Chassis drive/drift push block (chassis+0x24c..0x27c, 0x280)",
+   "reason": "Data fields read by 0x2807f8 / 0x281084, but the formula is only partly decoded (forward push along velocity from positive tyre force x speed curve x peak-hp/mass x throttle, off when braking) and Configure 0x27fe60 rewrites them. Not offered until decoded (UNVERIFIED)."
+  },
+  {
+   "id": "nt_ayc_misc",
+   "label": "AYC fields 0xf0, 0xf4, 0x108-0x12c",
+   "reason": "Data fields read in 0x2830d0, but their exact role in the envelope / throttle-letoff / brake terms is not fully decoded (UNVERIFIED)."
+  },
+  {
+   "id": "nt_wheel_mass",
+   "label": "Axle MASS / wheel MASS",
+   "reason": "Only used by the physics-level-3 path (level is 2 in game) and the PhysX mass sum at SetMass; no handling effect."
+  }
+ ]
+}

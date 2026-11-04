@@ -84,6 +84,16 @@
         const n = u32(base + parseInt(L.count, 16));
         const arr = L.inline ? base + parseInt(L.array, 16) : u32(base + parseInt(L.array, 16));
         for (let i = 0; i < Math.min(n, 256); i++) out.push(u32(arr + 4 * i));
+      } else if ((L.kind === 'global-list' || L.kind === 'chassis-linked-list') && L.obj) {
+        // circular list with a sentinel node: list = [head]; node = [list+next]; while node != list: obj = [node+obj]
+        const headAddr = L.kind === 'global-list' ? parseInt(L.head, 16) : resolve(L.base || 'chassis') + parseInt(L.head, 16);
+        const list = L.headIsPtr ? u32(headAddr) : headAddr, nx = parseInt(L.next, 16), ob = parseInt(L.obj, 16);
+        let node = u32(list + nx), guard = 0;
+        while (okPtr(node) && node !== list && guard++ < 8192) {
+          const c = u32(node + ob);
+          if (okPtr(c) && (!L.owner || L.kind !== 'global-list' || u32(c + parseInt(L.owner, 16)) === car)) out.push(c);
+          node = u32(node + nx);
+        }
       } else if (L.kind === 'global-list') {  // {kind, head:abs, next:off, owner:off} singly linked, or {count, array}
         if (L.array) {
           const n = u32(parseInt(L.count, 16)), arr = L.arrayIsPtr ? u32(parseInt(L.array, 16)) : parseInt(L.array, 16);
@@ -130,10 +140,14 @@
     if ((m = /^tyredata(\d)(\d)$/.exec(loc))) { const t = resolve('tyre' + m[1] + m[2]); return okPtr(t) ? u32(t + 0x104) : 0; }
     if ((m = /^diff(\d)$/.exec(loc))) { const a = resolve('axle' + m[1]); return okPtr(a) ? u32(a + 0x11c) : 0; }
     if ((m = /^kin(\d)$/.exec(loc))) { const a = resolve('axle' + m[1]); return okPtr(a) ? u32(a + 0x118) : 0; }
-    if ((m = /^comp:([0-9a-fx]+)(?:#(\d+))?$/i.exec(loc))) {
-      const vt = parseInt(m[1], 16), nth = +(m[2] || 0);
+    if ((m = /^comp:([0-9a-fx]+)(?:\[?#(\d+)\]?)?$/i.exec(loc))) {
+      const vt = parseInt(m[1], 16), nth = +(m[2] || 0), mt = resolve.match;
       let k = 0;
-      for (const c of components()) if (u32(c + 8) === vt && k++ === nth) return c;
+      for (const c of components()) {
+        if (u32(c + 8) !== vt) continue;
+        if (mt) { if (u32(c + parseInt(mt.off, 16)) === (mt.value >>> 0)) return c; continue; }
+        if (k++ === nth) return c;
+      }
       return 0;
     }
     return 0;
@@ -142,11 +156,11 @@
   function instances(p) {
     if (p.perWheel) {
       const list = Array.isArray(p.perWheel) ? p.perWheel : ['00', '01', '10', '11'];
-      return list.map((aw) => ({ key: p.id + '@' + aw, loc: p.loc.replace(/\{a\}/g, aw[0]).replace(/\{w\}/g, aw[1]).replace(/(wheel|tyre|tyredata)(?!\d)/, '$1' + aw), tag: wheelName(aw) }));
+      return list.map((aw) => ({ key: p.id + '@' + aw, loc: p.loc.replace(/\{a\}/g, aw[0]).replace(/\{w\}/g, aw[1]), tag: wheelName(aw) }));
     }
     if (p.perAxle) {
       const list = Array.isArray(p.perAxle) ? p.perAxle : ['0', '1'];
-      return list.map((a) => ({ key: p.id + '@' + a, loc: p.loc.replace(/\{a\}/g, a).replace(/(axle|diff|kin)(?!\d)/, '$1' + a), tag: axleName(a) }));
+      return list.map((a) => ({ key: p.id + '@' + a, loc: p.loc.replace(/\{a\}/g, a), tag: axleName(a) }));
     }
     return [{ key: p.id, loc: p.loc, tag: '' }];
   }
@@ -154,7 +168,9 @@
   const axleName = (a) => ((a === '0') === axle0Front() ? 'Front' : 'Rear');
   const wheelName = (aw) => axleName(aw[0]) + ' ' + (aw[1] === '0' ? 'L' : 'R');
   function addrOf(p, inst) {
+    resolve.match = p.match || null;
     const base = resolve(inst.loc);
+    resolve.match = null;
     if (!okPtr(base) && !inst.loc.startsWith('abs:')) return 0;
     if (p.vt && u32(base + 8) !== parseInt(p.vt, 16)) return 0;   // object is not the class we expect
     return (base + parseInt(p.off || '0', 16)) >>> 0;
@@ -296,7 +312,7 @@
       listEl.append(det);
     }
     tables.length = 0;
-    for (const t of catalog.tables || []) { if (goal && !(t.goals && t.goals[goal])) continue; const r = tableRow(t); if (r) listEl.append(r); }
+    for (const t of catalog.tables || []) { if (goal && !(t.goals && t.goals[goal])) continue; for (const inst of instances(t)) { const r = tableRow(t, inst); if (r) listEl.append(r); } }
     if (!goal && (catalog.not_tunable || []).length) {
       const body = h('div');
       for (const n of catalog.not_tunable) body.append(h('div', { class: 'row dead' }, h('div', { class: 'top' }, h('span', { class: 'lbl', text: n.label || n.id || n.name })), h('div', { class: 'desc', text: n.reason || n.desc || '' })));
@@ -343,15 +359,26 @@
     if (r.p.max !== undefined && v > r.p.max) v = r.p.max;
     const sk = stockKey(r.inst);
     if (!stock.has(sk)) stock.set(sk, readVal(r.p, addr));
+    const keep = r.p.after && r.p.after.length && !r.quiet ? changes() : null;
     writeVal(r.p, addr, v);
     try { await afterWrite(r.p, r.inst); } catch (e) { status(r.p.label + ': ' + e.message, true); }
+    if (keep) {   // some follow-up calls re-run the car's setup and undo other edits: put them back
+      for (const o of rows) {
+        if (o === r || keep[o.inst.key] === undefined || (!o.valEl && !o.chk)) continue;
+        const a2 = addrOf(o.p, o.inst); if (a2 && Math.abs(readVal(o.p, a2) - keep[o.inst.key]) > 1e-6) writeVal(o.p, a2, keep[o.inst.key]);
+      }
+      for (const t of tables) for (const c of t.cells) if (keep[c.key] !== undefined) writeVal({ type: c.c.type || 'f32' }, c.addr, keep[c.key]);
+    }
     refreshRow(r, true);
     remember();
   }
   // follow-up work some fields need (catalog "after": [{call:"0x273480", args:["car","axle{a}"]} or {write:{loc,off,type,from:"sqrt"}}])
   async function afterWrite(p, inst) {
-    if (!p.after) return;
-    for (const step of p.after) {
+    const steps = (p.after || []).slice();
+    // tyre formula numbers: the game caches B/C/D/E per tyre (re-done only when the load moves 50 N): clear every tyre's cache
+    if (p.id === 'tbl_pacejka' || /^ty_/.test(p.id || '')) for (const aw of ['00', '01', '10', '11']) steps.unshift({ poke: 'tyre' + aw, off: '0xe8', value: 0 });
+    for (const step of steps) {
+      if (step.poke) { const b = resolve(step.poke); if (okPtr(b)) Module._ps2web_poke(b + parseInt(step.off, 16), step.value >>> 0); continue; }
       if (step.call) {
         const sub = (s) => (typeof s === 'number' ? s : resolve(String(s).replace(/\{a\}/g, inst.key.split('@')[1]?.[0] ?? '0').replace(/\{w\}/g, inst.key.split('@')[1]?.[1] ?? '0')));
         await call(parseInt(step.call, 16), ...(step.args || []).map(sub));
@@ -393,23 +420,24 @@
 
   // ---------------- tables (torque curve, gear ratios, Pacejka block...) ----------------
   // catalog table: {id, group, label, desc, kind:"pairs"|"floats", loc, off(ptr field) | inline:true, countOff, count, stride, cols:[{label,off,type}], after}
-  function tableRow(t) {
+  function tableRow(t, inst) {
     const box = h('div');
     const row = h('div', { class: 'row' }, h('div', { class: 'top' }, h('span', { class: 'lbl', text: t.label || t.id }), h('span', { class: 'tag', text: t.group || '' })),
       goal && t.goals && t.goals[goal] ? h('div', { class: 'tip' }, h('b', { text: (GOALS.find((x) => x[0] === goal) || [])[1] + ': ' }), t.goals[goal]) : null,
       t.desc ? h('div', { class: 'desc', text: t.desc }) : null, box,
       t.apply && t.apply !== 'live' ? h('div', { class: 'meta' }, h('span', { class: 'apply', text: '⟳ ' + t.apply })) : null);
-    const det = h('details', {}, h('summary', {}, h('span', { text: (t.group ? t.group + ' · ' : '') + (t.label || t.id) }), h('small', { text: 'table' })), row);
-    const state = { t, box, row, cells: [], canvas: null, search: ((t.label || '') + ' ' + t.id + ' ' + (t.desc || '') + ' ' + (t.group || '')).toLowerCase() };
+    const det = h('details', {}, h('summary', {}, h('span', { text: (t.group ? t.group + ' · ' : '') + (t.label || t.id) + (inst.tag ? ' · ' + inst.tag : '') }), h('small', { text: 'table' })), row);
+    const state = { t, inst, box, row, cells: [], canvas: null, search: ((t.label || '') + ' ' + t.id + ' ' + (t.desc || '') + ' ' + (t.group || '')).toLowerCase() };
     det.addEventListener('toggle', () => { if (det.open) drawTable(state); });
     tables.push(state);
-    rows.push({ row, search: state.search, p: { id: t.id }, inst: { key: t.id }, refresh: () => det.open && drawTable(state, true) });
+    rows.push({ row: det, search: state.search + ' ' + inst.tag.toLowerCase(), p: { id: t.id }, inst: { key: inst.key }, refresh: () => det.open && drawTable(state, true) });
     return det;
   }
   const tables = [];
-  function tableBase(t) {
-    const obj = resolve(t.loc);
-    if (!okPtr(obj) && !String(t.loc).startsWith('abs:')) return null;
+  function tableBase(t, loc) {
+    const obj = resolve(loc);
+    if (!okPtr(obj) && !String(loc).startsWith('abs:')) return null;
+    if (t.vt && u32(obj + 8) !== parseInt(t.vt, 16)) return null;
     let data = t.inline ? obj + parseInt(t.off || '0', 16) : u32(obj + parseInt(t.off || '0', 16));
     const count = t.countOff !== undefined ? u32(obj + parseInt(t.countOff, 16)) : (t.count || 0);
     if (!okPtr(data) || count <= 0 || count > 512) return null;
@@ -417,7 +445,7 @@
   }
   function drawTable(s, soft) {
     if (!ready()) { s.box.textContent = 'Start driving to see this table.'; return; }
-    const b = tableBase(s.t);
+    const b = tableBase(s.t, s.inst.loc);
     if (!b) { s.box.textContent = 'Not loaded on this car right now.'; return; }
     const cols = s.t.cols || [{ label: 'value', off: '0', type: 'f32' }];
     if (!soft || s.cells.length !== b.count * cols.length) {
@@ -425,16 +453,16 @@
       const tb = h('table', { class: 'tb' });
       tb.append(h('tr', {}, h('td', { text: '#' }), ...cols.map((c) => h('td', { text: c.label }))));
       for (let i = 0; i < b.count; i++) {
-        const tr = h('tr', {}, h('td', { text: String(i + 1) }));
+        const tr = h('tr', {}, h('td', { text: (s.t.rowLabels && s.t.rowLabels[i]) || (s.t.id === 'tbl_gears' ? 'Gear ' + (i + 1) : String(i + 1)) }));
         for (const c of cols) {
           const inp = h('input', { type: 'number', step: c.step ?? 'any' });
           const addr = b.data + i * b.stride + parseInt(c.off || '0', 16);
-          const key = s.t.id + '#' + i + '.' + c.label;
+          const key = s.inst.key + '#' + i + '.' + c.label;
           inp.addEventListener('change', async () => {
             const sk = carNow.toString(16) + ':' + key, cp = { type: c.type || 'f32' };
             if (!stock.has(sk)) stock.set(sk, readVal(cp, addr));
             writeVal(cp, addr, +inp.value);
-            try { if (s.t.after) await afterWrite(s.t, { key: s.t.id }); } catch (e) { status(e.message, true); }
+            try { await afterWrite(s.t, s.inst); } catch (e) { status(e.message, true); }
             remember(); drawTable(s, true);
           });
           s.cells.push({ inp, addr, c, key });
