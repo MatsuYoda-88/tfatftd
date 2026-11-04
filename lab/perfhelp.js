@@ -29,3 +29,15 @@ window.TOP = (n = 14) => {
   return one.filter(l => l[2] === 'raster').sort((a, b) => b[3] - a[3]).slice(0, n).map(l => (l[3] / 1e6).toFixed(2) + 'ms p' + l[6] + ' t' + l[7] + ' e' + l[8] + ' psm=' + (+l[11]).toString(16) + ' flags=' + (+l[12]).toString(16));
 };
 'perfhelp loaded';
+// fair A/B: save the moment once, reload it before every run (same scene each time)
+window.FPS = async (ms = 3000) => { const f0 = Module._ps2web_frames(), t0 = performance.now(); const h = await HZ(Math.round(ms * 0.06)); return [h, +((Module._ps2web_frames() - f0) * 1000 / (performance.now() - t0)).toFixed(1)]; };
+window.QS = (load) => new Promise((res, rej) => { const prev = Module.onQuickState; Module.onQuickState = (l, ok) => { Module.onQuickState = prev; ok ? res() : rej(new Error('state failed')); }; if (!Module._ps2web_quick_state(load ? 1 : 0)) { Module.onQuickState = prev; rej(new Error('busy')); } });
+window.BENCH = async (rounds = 2, ms = 3000, hold = null) => {
+  await QS(false); const out = { on: [], off: [] };
+  for (let r = 0; r < rounds; r++) for (const on of [1, 0]) {
+    Module._ps2web_fast_lane(on); await QS(true); if (hold) KD(hold); await W(700);
+    const f = await FPS(ms); if (hold) KU(hold); out[on ? 'on' : 'off'].push(f);
+  }
+  Module._ps2web_fast_lane(1); window.BENCHRES = out; return out;
+};
+'perfhelp loaded';
