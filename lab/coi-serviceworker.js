@@ -47,6 +47,7 @@ if (typeof window === 'undefined') {
                         newHeaders.set("Cross-Origin-Resource-Policy", "cross-origin");
                     }
                     newHeaders.set("Cross-Origin-Opener-Policy", "same-origin");
+                    newHeaders.set("Document-Policy", "js-profiling");   // lab: lets the page sample where the engine spends its time
 
                     return new Response(response.body, {
                         status: response.status,
