@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>tfatftd.xyz source code</title>
+<style>
+:root{--bg:#0f0f13;--fg:#e9e9ee;--dim:#a7a7b3;--acc:#ffb020;--card:#18181f}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:760px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:28px;margin:0 0 4px}h2{font-size:19px;margin:28px 0 8px}
+a{color:var(--acc)}p,li{color:var(--fg)}small,.dim{color:var(--dim)}
+.card{background:var(--card);border-radius:10px;padding:16px 18px;margin:14px 0}
+.btn{display:inline-block;background:var(--acc);color:#111;font-weight:700;padding:10px 16px;border-radius:8px;text-decoration:none}
+code{background:#26262f;padding:1px 5px;border-radius:4px}
+</style></head><body><main>
+<h1>Source code</h1>
+<p class="dim">The engine behind tfatftd.xyz, and the PCSX2 graphics renderer it uses for high resolutions.</p>
+
+<div class="card">
+<a class="btn" href="tfatftd-source-3.14.11.tar.gz">Download source (version 3.14.11, 3.7 MB)</a>
+<p><small>Contains the engine (ps2-web-recomp with this site's changes), the PCSX2 GS renderer source it uses, the new
+WebGPU code that runs PCSX2's renderer in the browser, build notes, credits and licenses.</small></p>
+</div>
+
+<h2>License</h2>
+<p>The engine, <a href="https://github.com/snuri00/ps2-web-recomp">ps2-web-recomp</a> by Samir Nuri, is MIT-licensed, and
+its files keep that license. The high-resolution renderer is code from <a href="https://pcsx2.net">PCSX2</a>, which is
+licensed under the GPL version 3 or later. The program that runs on this site combines both, so it is distributed under
+the <a href="COPYING.GPLv3.txt">GNU General Public License v3 or later</a>: you can use, change and share it under those terms.</p>
+
+<h2>No game data</h2>
+<p>There's no disc image, game code, textures or saves in here. The scripts turn a disc you own into a web page on your
+own machine. The Fast and the Furious belongs to its owners (Eutechnyx, Bandai Namco, Universal); this is a fan project,
+not affiliated with or endorsed by them.</p>
+
+<h2>Thank you</h2>
+<p>This site exists because a lot of people did a lot of hard work and shared it: Samir Nuri, the PCSX2 team and every
+PCSX2 contributor, Arapapa, the people behind Emscripten, Dawn, wgpu, {fmt}, xxHash, fast_float, Dear ImGui, stb_image
+and coi-serviceworker, and everyone who documented the PS2 over the years. Thank you, all of you. Because of you I get
+to play this game again, with my friends. The full list is in <code>CREDITS.md</code> in the download.</p>
+<p><a href="/">Back to tfatftd.xyz</a></p>
+</main></body></html>
